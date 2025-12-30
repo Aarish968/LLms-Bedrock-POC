@@ -195,16 +195,6 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
         </Stack>
       </Box>
 
-      {/* Loading state */}
-      {isLoading && (
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight={200} mb={2}>
-          <CircularProgress />
-          <Typography variant="body2" sx={{ ml: 2 }}>
-            Loading table data...
-          </Typography>
-        </Box>
-      )}
-
       {/* Data Grid */}
       <Box sx={{ height: 500, width: '100%' }}>
         <DataGrid
