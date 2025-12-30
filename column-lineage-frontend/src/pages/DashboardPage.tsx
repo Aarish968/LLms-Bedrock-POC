@@ -111,9 +111,6 @@ const DashboardPage = () => {
       {/* Column Lineage Table */}
       <Card>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Source Column and Table Mapping
-          </Typography>
           <ColumnLineageTable searchQuery={searchQuery} />
         </CardContent>
       </Card>

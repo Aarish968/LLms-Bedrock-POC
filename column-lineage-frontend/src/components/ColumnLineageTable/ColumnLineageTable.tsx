@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { DataGrid, GridColDef, GridRowsProp } from '@mui/x-data-grid'
-import { Box, Chip, Alert, CircularProgress, Switch, FormControlLabel, Typography } from '@mui/material'
+import { Box, Chip, Alert, CircularProgress, Typography, TextField, Button, Stack } from '@mui/material'
+import { Add as AddIcon, Edit as EditIcon, Search as SearchIcon } from '@mui/icons-material'
 import { useBaseView } from '../../hooks/useBaseView'
 import { BaseViewRecord } from '../../api/baseViewService'
 
@@ -8,218 +9,106 @@ interface ColumnLineageTableProps {
   searchQuery: string
 }
 
-// Sample data based on the CSV structure (fallback)
-const sampleData: GridRowsProp = [
-  {
-    id: 1,
-    viewName: 'TEST_SEA_RAW_FQ',
-    viewColumn: 'SUBSCRIPTION_REF_ID',
-    columnType: 'DIRECT',
-    sourceTable: 'CPS_DSCI_BR.SEA_BOOKINGS',
-    sourceColumn: 'SUBSCRIPTION_REF_ID',
-    expressionType: '',
-  },
-  {
-    id: 2,
-    viewName: 'TEST_SEA_RAW_FQ',
-    viewColumn: 'FISCAL_QUARTER_ID',
-    columnType: 'DIRECT',
-    sourceTable: 'CPS_DSCI_BR.SEA_BOOKINGS',
-    sourceColumn: 'FISCAL_QUARTER_ID',
-    expressionType: '',
-  },
-  {
-    id: 3,
-    viewName: 'TEST_SEA_RAW_FQ',
-    viewColumn: 'ACV',
-    columnType: 'DERIVED',
-    sourceTable: 'CPS_DSCI_BR.SEA_BOOKINGS',
-    sourceColumn: 'ANNUAL_BOOKING_NET',
-    expressionType: 'SUM',
-  },
-  {
-    id: 4,
-    viewName: 'TEST_SEA_RAW_FQ',
-    viewColumn: 'CUMULATIVE_ACV',
-    columnType: 'DERIVED',
-    sourceTable: 'CPS_DSCI_BR.SEA_BOOKINGS',
-    sourceColumn: 'ANNUAL_BOOKING_NET; FISCAL_QUARTER_ID; SUBSCRIPTION_REF_ID',
-    expressionType: 'WINDOW',
-  },
-  {
-    id: 5,
-    viewName: 'TEST_SEA_RAW',
-    viewColumn: 'SUBSCRIPTION_REF_ID',
-    columnType: 'DIRECT',
-    sourceTable: 'CPS_DSCI_BR.SEA_BOOKINGS',
-    sourceColumn: 'SUBSCRIPTION_REF_ID',
-    expressionType: '',
-  },
-]
-
 const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
-  const [showApiData, setShowApiData] = useState(true)
-  const [mockMode, setMockMode] = useState(false)
+  const [localSearchQuery, setLocalSearchQuery] = useState('')
 
-  // Fetch base view data from API
+  // Fetch base view data from API (always enabled, no mock mode)
   const {
     data: apiData,
     isLoading,
     error,
     isError,
     refetch,
-  } = useBaseView(
-    { 
-      mock: mockMode,
-      limit: 100 
-    },
-    { enabled: showApiData }
-  )
+  } = useBaseView({
+    mock: false,
+    limit: 100 
+  })
 
-  // Transform API data to match the table structure
+  // Transform API data to match the simplified table structure
   const transformedApiData: GridRowsProp = useMemo(() => {
     if (!apiData?.records) return []
     
-    return apiData.records.map((record: BaseViewRecord, index: number) => ({
-      id: record.sr_no || index + 1,
-      viewName: 'BASE_VIEW', // Since this is base view data
-      viewColumn: 'TABLE_NAME', // The column we're showing
-      columnType: 'DIRECT', // Base view data is direct
-      sourceTable: 'PUBLIC.BASE_VIEW', // Source table
-      sourceColumn: record.table_name, // The actual table name
-      expressionType: '', // No expression for base view
-      srNo: record.sr_no, // Additional field for display
-      tableName: record.table_name, // Additional field for display
+    return apiData.records.map((record: BaseViewRecord) => ({
+      id: record.sr_no,
+      srNo: record.sr_no,
+      tableName: record.table_name,
     }))
   }, [apiData])
 
-  // Choose data source based on toggle
-  const dataToUse = showApiData ? transformedApiData : sampleData
+  // Use API data
+  const dataToUse = transformedApiData
 
+  // Simplified columns - only Serial No. and Table Name
   const columns: GridColDef[] = [
-    ...(showApiData ? [
-      {
-        field: 'srNo',
-        headerName: 'Serial No.',
-        width: 120,
-        renderCell: (params) => (
-          <Chip
-            label={params.value}
-            size="small"
-            color="primary"
-            variant="outlined"
-          />
-        ),
-      },
-      {
-        field: 'tableName',
-        headerName: 'Table Name',
-        width: 250,
-        renderCell: (params) => (
-          <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem', fontWeight: 'medium' }}>
-            {params.value}
-          </Box>
-        ),
-      },
-    ] : []),
     {
-      field: 'viewName',
-      headerName: 'View Name',
-      width: 200,
-      renderCell: (params) => (
-        <Box sx={{ fontWeight: 'medium', color: 'primary.main' }}>
-          {params.value}
-        </Box>
-      ),
-    },
-    {
-      field: 'viewColumn',
-      headerName: 'View Column',
-      width: 180,
-      renderCell: (params) => (
-        <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
-          {params.value}
-        </Box>
-      ),
-    },
-    {
-      field: 'columnType',
-      headerName: 'Column Type',
-      width: 120,
+      field: 'srNo',
+      headerName: 'Serial No.',
+      width: 150,
+      align: 'center',
+      headerAlign: 'center',
       renderCell: (params) => (
         <Chip
           label={params.value}
           size="small"
-          color={params.value === 'DIRECT' ? 'success' : 'warning'}
+          color="primary"
           variant="outlined"
         />
       ),
     },
     {
-      field: 'sourceTable',
-      headerName: 'Source Table',
-      width: 250,
+      field: 'tableName',
+      headerName: 'Table Name',
+      flex: 1,
+      minWidth: 300,
       renderCell: (params) => (
-        <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
+        <Box sx={{ 
+          fontFamily: 'monospace', 
+          fontSize: '0.875rem', 
+          fontWeight: 'medium',
+          color: 'text.primary'
+        }}>
           {params.value}
         </Box>
-      ),
-    },
-    {
-      field: 'sourceColumn',
-      headerName: 'Source Column',
-      width: 300,
-      renderCell: (params) => (
-        <Box sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
-          {params.value}
-        </Box>
-      ),
-    },
-    {
-      field: 'expressionType',
-      headerName: 'Expression Type',
-      width: 140,
-      renderCell: (params) => (
-        params.value ? (
-          <Chip
-            label={params.value}
-            size="small"
-            color="info"
-            variant="outlined"
-          />
-        ) : (
-          <Box sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
-            -
-          </Box>
-        )
       ),
     },
   ]
 
-  // Filter data based on search query
+  // Filter data based on both search queries (prop and local)
   const filteredData = useMemo(() => {
-    if (!searchQuery.trim()) {
+    const combinedQuery = (searchQuery + ' ' + localSearchQuery).trim().toLowerCase()
+    
+    if (!combinedQuery) {
       return dataToUse
     }
 
-    const query = searchQuery.toLowerCase()
     return dataToUse.filter((row) =>
       Object.values(row).some((value) =>
-        String(value).toLowerCase().includes(query)
+        String(value).toLowerCase().includes(combinedQuery)
       )
     )
-  }, [searchQuery, dataToUse])
+  }, [searchQuery, localSearchQuery, dataToUse])
+
+  // Handle button clicks
+  const handleAdd = () => {
+    console.log('Add button clicked')
+    // Add your add functionality here
+  }
+
+  const handleEdit = () => {
+    console.log('Edit button clicked')
+    // Add your edit functionality here
+  }
 
   // Error state
-  if (showApiData && isError) {
+  if (isError) {
     return (
       <Box sx={{ mb: 2 }}>
         <Alert 
           severity="error" 
           action={
-            <button onClick={() => refetch()}>
+            <Button onClick={() => refetch()} size="small">
               Retry
-            </button>
+            </Button>
           }
         >
           <Typography variant="h6" gutterBottom>
@@ -235,56 +124,69 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
 
   return (
     <Box>
-      {/* Controls */}
-      <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={showApiData}
-              onChange={(e) => setShowApiData(e.target.checked)}
-            />
-          }
-          label="Show API Data"
-        />
+      {/* Header with title and controls on same line */}
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        mb: 2,
+        flexWrap: 'wrap',
+        gap: 2
+      }}>
+        <Typography variant="h6" component="h2">
+          Source Column and Table Mapping
+        </Typography>
         
-        {showApiData && (
-          <FormControlLabel
-            control={
-              <Switch
-                checked={mockMode}
-                onChange={(e) => setMockMode(e.target.checked)}
-              />
-            }
-            label="Mock Mode"
-          />
-        )}
-
-        {showApiData && apiData && (
-          <Chip
-            label={`${apiData.total_records} total records`}
-            color="info"
-            variant="outlined"
+        <Stack direction="row" spacing={2} alignItems="center">
+          <TextField
+            placeholder="Search by serial number or table name..."
+            value={localSearchQuery}
+            onChange={(e) => setLocalSearchQuery(e.target.value)}
             size="small"
+            sx={{ minWidth: 300 }}
+            slotProps={{
+              input: {
+                startAdornment: <SearchIcon sx={{ mr: 1, color: 'text.secondary' }} />,
+              },
+            }}
           />
-        )}
+          
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleAdd}
+            size="small"
+          >
+            Add
+          </Button>
+          
+          <Button
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={handleEdit}
+            size="small"
+          >
+            Edit
+          </Button>
+        </Stack>
       </Box>
 
       {/* Loading state */}
-      {showApiData && isLoading && (
+      {isLoading && (
         <Box display="flex" justifyContent="center" alignItems="center" minHeight={200} mb={2}>
           <CircularProgress />
           <Typography variant="body2" sx={{ ml: 2 }}>
-            Loading base view data...
+            Loading table data...
           </Typography>
         </Box>
       )}
 
       {/* Data Grid */}
-      <Box sx={{ height: 400, width: '100%' }}>
+      <Box sx={{ height: 500, width: '100%' }}>
         <DataGrid
           rows={filteredData}
           columns={columns}
-          loading={showApiData && isLoading}
+          loading={isLoading}
           initialState={{
             pagination: {
               paginationModel: {
@@ -292,7 +194,7 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
               },
             },
           }}
-          pageSizeOptions={[5, 10, 25]}
+          pageSizeOptions={[5, 10, 25, 50]}
           checkboxSelection
           disableRowSelectionOnClick
           sx={{
@@ -302,9 +204,13 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
             '& .MuiDataGrid-columnHeaders': {
               backgroundColor: '#f8f9fa',
               borderBottom: '2px solid #e0e0e0',
+              fontWeight: 600,
             },
             '& .MuiDataGrid-row:hover': {
               backgroundColor: '#f5f5f5',
+            },
+            '& .MuiDataGrid-root': {
+              border: '1px solid #e0e0e0',
             },
           }}
           slots={{
@@ -320,7 +226,7 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
                   No data available
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {searchQuery ? 'No records match your search' : 'No records found'}
+                  {localSearchQuery || searchQuery ? 'No records match your search' : 'No records found'}
                 </Typography>
               </Box>
             ),
