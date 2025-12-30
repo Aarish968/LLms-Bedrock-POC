@@ -16,6 +16,7 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [selectedRecord, setSelectedRecord] = useState<BaseViewRecord | null>(null)
+  const [selectedRows, setSelectedRows] = useState<number[]>([])  // Track selected row IDs
 
   // Fetch base view data from API (always enabled, no mock mode)
   const {
@@ -99,13 +100,25 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
   }
 
   const handleEdit = () => {
-    // For now, we'll edit the first selected record or show a message
-    // In a real app, you'd get the selected record from DataGrid selection
-    if (dataToUse.length > 0) {
-      setSelectedRecord(dataToUse[0] as BaseViewRecord)
+    if (selectedRows.length === 0) {
+      alert('Please select a record to edit')
+      return
+    }
+
+    if (selectedRows.length > 1) {
+      alert('Please select only one record to edit')
+      return
+    }
+
+    // Find the original record from API data using the selected row ID (sr_no)
+    const selectedSrNo = selectedRows[0]
+    const recordToEdit = apiData?.records.find(record => record.sr_no === selectedSrNo)
+    
+    if (recordToEdit) {
+      setSelectedRecord(recordToEdit)
       setEditModalOpen(true)
     } else {
-      alert('No records available to edit')
+      alert('Selected record not found')
     }
   }
 
@@ -175,8 +188,9 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
             startIcon={<EditIcon />}
             onClick={handleEdit}
             size="small"
+            disabled={selectedRows.length !== 1}
           >
-            Edit
+            Edit {selectedRows.length === 1 ? '' : `(${selectedRows.length} selected)`}
           </Button>
         </Stack>
       </Box>
@@ -207,6 +221,10 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
           pageSizeOptions={[5, 10, 25, 50]}
           checkboxSelection
           disableRowSelectionOnClick
+          onRowSelectionModelChange={(newSelection) => {
+            setSelectedRows(newSelection as number[])
+          }}
+          rowSelectionModel={selectedRows}
           sx={{
             '& .MuiDataGrid-cell': {
               borderBottom: '1px solid #f0f0f0',
@@ -247,12 +265,19 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
       {/* Modals */}
       <AddBaseViewModal
         open={addModalOpen}
-        onClose={() => setAddModalOpen(false)}
+        onClose={() => {
+          setAddModalOpen(false)
+          setSelectedRows([]) // Clear selection after adding
+        }}
       />
       
       <EditBaseViewModal
         open={editModalOpen}
-        onClose={() => setEditModalOpen(false)}
+        onClose={() => {
+          setEditModalOpen(false)
+          setSelectedRecord(null)
+          setSelectedRows([]) // Clear selection after editing
+        }}
         record={selectedRecord}
       />
     </Box>
