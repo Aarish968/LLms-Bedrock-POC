@@ -19,6 +19,8 @@ from api.v1.models.lineage import (
     JobStatus,
     BaseViewRecord,
     BaseViewResponse,
+    BaseViewCreateRequest,
+    BaseViewUpdateRequest,
 )
 from api.v1.services.lineage_service import LineageService
 from api.v1.services.job_manager import JobManager
@@ -361,29 +363,11 @@ async def get_base_view_data(
         
         
         if not engine or mock:
-            # Mock data for development/testing when no database is available
-            logger.info("Using mock data for BASE_VIEW")
-            mock_records = [
-                BaseViewRecord(sr_no=1, table_name="CUSTOMERS"),
-                BaseViewRecord(sr_no=2, table_name="ORDERS"),
-                BaseViewRecord(sr_no=3, table_name="PRODUCTS"),
-                BaseViewRecord(sr_no=4, table_name="INVENTORY"),
-                BaseViewRecord(sr_no=5, table_name="SALES"),
-                BaseViewRecord(sr_no=6, table_name="EMPLOYEES"),
-                BaseViewRecord(sr_no=7, table_name="DEPARTMENTS"),
-                BaseViewRecord(sr_no=8, table_name="SUPPLIERS"),
-                BaseViewRecord(sr_no=9, table_name="CATEGORIES"),
-                BaseViewRecord(sr_no=10, table_name="TRANSACTIONS"),
-            ]
-            
-            # Apply pagination to mock data
-            start_idx = offset
-            end_idx = offset + limit if limit else len(mock_records)
-            paginated_records = mock_records[start_idx:end_idx]
-            
+            # Return empty response when no database connection or in mock mode
+            logger.info("No database connection available or mock mode enabled")
             return BaseViewResponse(
-                total_records=len(mock_records),
-                records=paginated_records,
+                total_records=0,
+                records=[],
             )
         
         # Query the actual Snowflake database
@@ -428,22 +412,223 @@ async def get_base_view_data(
     except Exception as e:
         logger.error("Failed to retrieve BASE_VIEW data", error=str(e))
         
-        # Fallback to mock data on any error
-        logger.info("Falling back to mock data due to error")
-        mock_records = [
-            BaseViewRecord(sr_no=1, table_name="CUSTOMERS"),
-            BaseViewRecord(sr_no=2, table_name="ORDERS"),
-            BaseViewRecord(sr_no=3, table_name="PRODUCTS"),
-            BaseViewRecord(sr_no=4, table_name="INVENTORY"),
-            BaseViewRecord(sr_no=5, table_name="SALES"),
-        ]
-        
-        # Apply pagination to mock data
-        start_idx = offset
-        end_idx = offset + limit if limit else len(mock_records)
-        paginated_records = mock_records[start_idx:end_idx]
-        
+        # Fallback to empty response on any error
+        logger.info("Falling back to empty response due to error")
         return BaseViewResponse(
-            total_records=len(mock_records),
-            records=paginated_records,
+            total_records=0,
+            records=[],
+        )
+
+
+@router.post("/public/base-view", response_model=BaseViewRecord, status_code=status.HTTP_201_CREATED)
+async def create_base_view_record(
+    request: BaseViewCreateRequest,
+):
+    """
+    Create a new record in the BASE_VIEW table.
+    
+    This endpoint does not require authentication and can be accessed publicly.
+    Creates a new record with the provided serial number and table name.
+    """
+    logger.info(
+        "Creating new BASE_VIEW record",
+        sr_no=request.sr_no,
+        table_name=request.table_name,
+    )
+    
+    try:
+        # Get database connection
+        from api.dependencies.database import get_database_engine
+        engine = get_database_engine()
+        
+        if not engine:
+            logger.error("No database connection available")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection not available",
+            )
+        
+        # Insert new record into Snowflake database
+        with engine.connect() as connection:
+            from sqlalchemy import text
+            
+            # Check if serial number already exists
+            check_query = text("SELECT COUNT(*) FROM PUBLIC.BASE_VIEW WHERE SR_NO = :sr_no")
+            check_result = connection.execute(check_query, {"sr_no": request.sr_no})
+            exists = check_result.fetchone()[0] > 0
+            
+            if exists:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Record with serial number {request.sr_no} already exists",
+                )
+            
+            # Insert new record
+            insert_query = text("""
+                INSERT INTO PUBLIC.BASE_VIEW (SR_NO, TABLE_NAME) 
+                VALUES (:sr_no, :table_name)
+            """)
+            
+            connection.execute(insert_query, {
+                "sr_no": request.sr_no,
+                "table_name": request.table_name
+            })
+            connection.commit()
+            
+            logger.info(
+                "BASE_VIEW record created successfully",
+                sr_no=request.sr_no,
+                table_name=request.table_name,
+            )
+            
+            return BaseViewRecord(
+                sr_no=request.sr_no,
+                table_name=request.table_name
+            )
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error("Failed to create BASE_VIEW record", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create record: {str(e)}",
+        )
+
+
+@router.put("/public/base-view/{sr_no}", response_model=BaseViewRecord)
+async def update_base_view_record(
+    sr_no: int,
+    request: BaseViewUpdateRequest,
+):
+    """
+    Update an existing record in the BASE_VIEW table.
+    
+    This endpoint does not require authentication and can be accessed publicly.
+    Updates the table name for the record with the specified serial number.
+    """
+    logger.info(
+        "Updating BASE_VIEW record",
+        sr_no=sr_no,
+        new_table_name=request.table_name,
+    )
+    
+    try:
+        # Get database connection
+        from api.dependencies.database import get_database_engine
+        engine = get_database_engine()
+        
+        if not engine:
+            logger.error("No database connection available")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection not available",
+            )
+        
+        # Update record in Snowflake database
+        with engine.connect() as connection:
+            from sqlalchemy import text
+            
+            # Check if record exists
+            check_query = text("SELECT COUNT(*) FROM PUBLIC.BASE_VIEW WHERE SR_NO = :sr_no")
+            check_result = connection.execute(check_query, {"sr_no": sr_no})
+            exists = check_result.fetchone()[0] > 0
+            
+            if not exists:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Record with serial number {sr_no} not found",
+                )
+            
+            # Update the record
+            update_query = text("""
+                UPDATE PUBLIC.BASE_VIEW 
+                SET TABLE_NAME = :table_name 
+                WHERE SR_NO = :sr_no
+            """)
+            
+            result = connection.execute(update_query, {
+                "sr_no": sr_no,
+                "table_name": request.table_name
+            })
+            connection.commit()
+            
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Record with serial number {sr_no} not found",
+                )
+            
+            logger.info(
+                "BASE_VIEW record updated successfully",
+                sr_no=sr_no,
+                new_table_name=request.table_name,
+            )
+            
+            return BaseViewRecord(
+                sr_no=sr_no,
+                table_name=request.table_name
+            )
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error("Failed to update BASE_VIEW record", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update record: {str(e)}",
+        )
+
+
+@router.delete("/public/base-view/{sr_no}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_base_view_record(
+    sr_no: int,
+):
+    """
+    Delete a record from the BASE_VIEW table.
+    
+    This endpoint does not require authentication and can be accessed publicly.
+    Deletes the record with the specified serial number.
+    """
+    logger.info("Deleting BASE_VIEW record", sr_no=sr_no)
+    
+    try:
+        # Get database connection
+        from api.dependencies.database import get_database_engine
+        engine = get_database_engine()
+        
+        if not engine:
+            logger.error("No database connection available")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database connection not available",
+            )
+        
+        # Delete record from Snowflake database
+        with engine.connect() as connection:
+            from sqlalchemy import text
+            
+            # Delete the record
+            delete_query = text("DELETE FROM PUBLIC.BASE_VIEW WHERE SR_NO = :sr_no")
+            result = connection.execute(delete_query, {"sr_no": sr_no})
+            connection.commit()
+            
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Record with serial number {sr_no} not found",
+                )
+            
+            logger.info("BASE_VIEW record deleted successfully", sr_no=sr_no)
+            
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error("Failed to delete BASE_VIEW record", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete record: {str(e)}",
         )

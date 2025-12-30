@@ -170,6 +170,17 @@ class BaseViewRecord(BaseModel):
     table_name: str = Field(description="Table name")
 
 
+class BaseViewCreateRequest(BaseModel):
+    """Request model for creating a new base view record."""
+    sr_no: int = Field(description="Serial number", gt=0)
+    table_name: str = Field(description="Table name", min_length=1, max_length=255)
+
+
+class BaseViewUpdateRequest(BaseModel):
+    """Request model for updating an existing base view record."""
+    table_name: str = Field(description="Table name", min_length=1, max_length=255)
+
+
 class BaseViewResponse(BaseModel):
     """Response model for BASE_VIEW table data."""
     total_records: int = Field(description="Total number of records")
