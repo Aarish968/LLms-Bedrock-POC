@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { api, apiUtils, AxiosError } from './client';
 
 // Types for the base view API
 export interface BaseViewRecord {
@@ -17,34 +17,13 @@ export interface BaseViewParams {
   mock?: boolean;
 }
 
-// API configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-
-// Create axios instance
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Response interceptor for error handling
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    console.error('API Error:', error);
-    return Promise.reject(error);
-  }
-);
-
 export const baseViewService = {
   /**
    * Fetch base view data from the API
    */
   async getBaseViewData(params: BaseViewParams = {}): Promise<BaseViewResponse> {
     try {
-      const response = await apiClient.get('/api/v1/lineage/public/base-view', {
+      const response = await api.get<BaseViewResponse>('/api/v1/lineage/public/base-view', {
         params: {
           limit: params.limit || 100,
           offset: params.offset || 0,
@@ -54,14 +33,24 @@ export const baseViewService = {
 
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new Error(
-          error.response?.data?.detail || 
-          error.message || 
-          'Failed to fetch base view data'
-        );
+      const axiosError = error as AxiosError;
+      
+      // Use utility functions for better error handling
+      if (apiUtils.isNetworkError(axiosError)) {
+        throw new Error('Network error - please check your connection');
       }
-      throw error;
+      
+      if (apiUtils.isTimeoutError(axiosError)) {
+        throw new Error('Request timeout - please try again');
+      }
+      
+      if (apiUtils.isServerError(axiosError)) {
+        throw new Error('Server error - please try again later');
+      }
+      
+      // Use the utility function to get error message
+      const errorMessage = apiUtils.getErrorMessage(axiosError);
+      throw new Error(errorMessage || 'Failed to fetch base view data');
     }
   },
 };
