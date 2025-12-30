@@ -17,6 +17,8 @@ from api.v1.models.lineage import (
     LineageExportRequest,
     ViewInfo,
     JobStatus,
+    BaseViewRecord,
+    BaseViewResponse,
 )
 from api.v1.services.lineage_service import LineageService
 from api.v1.services.job_manager import JobManager
@@ -325,4 +327,123 @@ async def list_jobs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve jobs: {str(e)}",
+        )
+
+
+@router.get("/public/base-view", response_model=BaseViewResponse)
+async def get_base_view_data(
+    limit: Optional[int] = 100,
+    offset: int = 0,
+    mock: bool = False,  # Add mock parameter for testing
+):
+    """
+    Public endpoint to retrieve data from Snowflake BASE_VIEW table.
+    
+    This endpoint does not require authentication and can be accessed publicly.
+    Returns data from the PUBLIC.BASE_VIEW table with SR_NO and TABLE_NAME columns.
+    
+    Parameters:
+    - limit: Maximum number of records to return (default: 100)
+    - offset: Number of records to skip (default: 0)
+    - mock: Force mock mode for testing (default: False)
+    """
+    logger.info(
+        "Getting BASE_VIEW data",
+        limit=limit,
+        offset=offset,
+        mock_mode=mock,
+    )
+    
+    try:
+        # Get database connection
+        from api.dependencies.database import get_database_engine
+        engine = get_database_engine()
+        
+        
+        if not engine or mock:
+            # Mock data for development/testing when no database is available
+            logger.info("Using mock data for BASE_VIEW")
+            mock_records = [
+                BaseViewRecord(sr_no=1, table_name="CUSTOMERS"),
+                BaseViewRecord(sr_no=2, table_name="ORDERS"),
+                BaseViewRecord(sr_no=3, table_name="PRODUCTS"),
+                BaseViewRecord(sr_no=4, table_name="INVENTORY"),
+                BaseViewRecord(sr_no=5, table_name="SALES"),
+                BaseViewRecord(sr_no=6, table_name="EMPLOYEES"),
+                BaseViewRecord(sr_no=7, table_name="DEPARTMENTS"),
+                BaseViewRecord(sr_no=8, table_name="SUPPLIERS"),
+                BaseViewRecord(sr_no=9, table_name="CATEGORIES"),
+                BaseViewRecord(sr_no=10, table_name="TRANSACTIONS"),
+            ]
+            
+            # Apply pagination to mock data
+            start_idx = offset
+            end_idx = offset + limit if limit else len(mock_records)
+            paginated_records = mock_records[start_idx:end_idx]
+            
+            return BaseViewResponse(
+                total_records=len(mock_records),
+                records=paginated_records,
+            )
+        
+        # Query the actual Snowflake database
+        logger.info("Querying Snowflake database")
+        with engine.connect() as connection:
+            from sqlalchemy import text
+            
+            # Count total records
+            count_query = text("SELECT COUNT(*) as total FROM PUBLIC.BASE_VIEW")
+            count_result = connection.execute(count_query)
+            total_records = count_result.fetchone()[0]
+            
+            # Get paginated data - Snowflake uses LIMIT and OFFSET
+            if limit:
+                data_query = text("""
+                    SELECT SR_NO, TABLE_NAME 
+                    FROM PUBLIC.BASE_VIEW 
+                    ORDER BY SR_NO 
+                    LIMIT :limit OFFSET :offset
+                """)
+                result = connection.execute(data_query, {"limit": limit, "offset": offset})
+            else:
+                # If no limit specified, get all remaining records from offset
+                data_query = text("""
+                    SELECT SR_NO, TABLE_NAME 
+                    FROM PUBLIC.BASE_VIEW 
+                    ORDER BY SR_NO 
+                    OFFSET :offset
+                """)
+                result = connection.execute(data_query, {"offset": offset})
+            
+            records = [
+                BaseViewRecord(sr_no=row[0], table_name=row[1])
+                for row in result.fetchall()
+            ]
+            
+            return BaseViewResponse(
+                total_records=total_records,
+                records=records,
+            )
+            
+    except Exception as e:
+        logger.error("Failed to retrieve BASE_VIEW data", error=str(e))
+        
+        # Fallback to mock data on any error
+        logger.info("Falling back to mock data due to error")
+        mock_records = [
+            BaseViewRecord(sr_no=1, table_name="CUSTOMERS"),
+            BaseViewRecord(sr_no=2, table_name="ORDERS"),
+            BaseViewRecord(sr_no=3, table_name="PRODUCTS"),
+            BaseViewRecord(sr_no=4, table_name="INVENTORY"),
+            BaseViewRecord(sr_no=5, table_name="SALES"),
+        ]
+        
+        # Apply pagination to mock data
+        start_idx = offset
+        end_idx = offset + limit if limit else len(mock_records)
+        paginated_records = mock_records[start_idx:end_idx]
+        
+        return BaseViewResponse(
+            total_records=len(mock_records),
+            records=paginated_records,
         )

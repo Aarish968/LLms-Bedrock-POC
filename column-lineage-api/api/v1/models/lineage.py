@@ -164,6 +164,18 @@ class LineageExportRequest(BaseModel):
     )
 
 
+class BaseViewRecord(BaseModel):
+    """Base view record model for Snowflake BASE_VIEW table."""
+    sr_no: int = Field(description="Serial number")
+    table_name: str = Field(description="Table name")
+
+
+class BaseViewResponse(BaseModel):
+    """Response model for BASE_VIEW table data."""
+    total_records: int = Field(description="Total number of records")
+    records: List[BaseViewRecord] = Field(description="List of base view records")
+
+
 class ErrorDetail(BaseModel):
     """Error detail model."""
     view_name: str = Field(description="View name that caused the error")

@@ -29,22 +29,57 @@ def get_database_engine() -> Engine:
         return None
     
     try:
+        logger.info(
+            "Attempting to connect to Snowflake",
+            account=settings.SNOWFLAKE_ACCOUNT,
+            user=settings.SNOWFLAKE_USER,
+            database=settings.SNOWFLAKE_DATABASE,
+            schema=settings.SNOWFLAKE_SCHEMA,
+            warehouse=settings.SNOWFLAKE_WAREHOUSE,
+        )
+        
+        # Create engine using snowflake-sqlalchemy with explicit connection parameters
+        # This avoids URL parsing issues with organization-account format
+        from snowflake.sqlalchemy import URL
+        
         engine = create_engine(
-            settings.snowflake_url,
+            URL(
+                account=settings.SNOWFLAKE_ACCOUNT,
+                user=settings.SNOWFLAKE_USER,
+                password=settings.SNOWFLAKE_PASSWORD,
+                database=settings.SNOWFLAKE_DATABASE,
+                schema=settings.SNOWFLAKE_SCHEMA,
+                warehouse=settings.SNOWFLAKE_WAREHOUSE,
+                role=settings.SNOWFLAKE_ROLE,
+            ),
             echo=settings.DEBUG,
             pool_pre_ping=True,
             pool_recycle=3600,
+            # Add connection arguments for Snowflake
+            connect_args={
+                "application": "column-lineage-api",
+                "client_session_keep_alive": True,
+            }
         )
         
         # Test connection
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            from sqlalchemy import text
+            result = conn.execute(text("SELECT CURRENT_VERSION()"))
+            version = result.fetchone()[0]
+            logger.info("Database connection successful", snowflake_version=version)
         
         logger.info("Database engine created successfully")
         return engine
         
     except Exception as e:
-        logger.error("Failed to create database engine", error=str(e))
+        logger.error(
+            "Failed to create database engine", 
+            error=str(e),
+            account=settings.SNOWFLAKE_ACCOUNT,
+            user=settings.SNOWFLAKE_USER,
+            database=settings.SNOWFLAKE_DATABASE,
+        )
         return None
 
 

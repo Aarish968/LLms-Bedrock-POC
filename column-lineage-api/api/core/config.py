@@ -72,11 +72,18 @@ class Settings(BaseSettings):
         if not all([self.SNOWFLAKE_ACCOUNT, self.SNOWFLAKE_USER, self.SNOWFLAKE_PASSWORD]):
             return ""
         
+        # URL encode the password to handle special characters
+        from urllib.parse import quote_plus
+        encoded_password = quote_plus(self.SNOWFLAKE_PASSWORD)
+        encoded_user = quote_plus(self.SNOWFLAKE_USER)
+        
+        # For organization-account format, SQLAlchemy needs specific handling
+        # Format: snowflake://user:password@account/database/schema?warehouse=wh&role=role
         return (
-            f"snowflake://{self.SNOWFLAKE_USER}:{self.SNOWFLAKE_PASSWORD}"
-            f"@{self.SNOWFLAKE_ACCOUNT}/{self.SNOWFLAKE_DATABASE}"
-            f"/{self.SNOWFLAKE_SCHEMA}?warehouse={self.SNOWFLAKE_WAREHOUSE}"
-            f"&role={self.SNOWFLAKE_ROLE}"
+            f"snowflake://{encoded_user}:{encoded_password}"
+            f"@{self.SNOWFLAKE_ACCOUNT}/"
+            f"{self.SNOWFLAKE_DATABASE}/{self.SNOWFLAKE_SCHEMA}"
+            f"?warehouse={self.SNOWFLAKE_WAREHOUSE}&role={self.SNOWFLAKE_ROLE}"
         )
     
     @property
