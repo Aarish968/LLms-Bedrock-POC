@@ -1,5 +1,5 @@
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
-import { baseViewService, BaseViewResponse, BaseViewParams } from '../api/baseViewService';
+import { useQuery, useMutation, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
+import { baseViewService, BaseViewResponse, BaseViewParams, BaseViewCreateRequest, BaseViewUpdateRequest, BaseViewRecord } from '../api/baseViewService';
 
 export const BASE_VIEW_QUERY_KEY = 'baseView';
 
@@ -28,5 +28,53 @@ export const useBaseView = (
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     ...queryOptions,
+  });
+};
+
+// Hook for creating a new base view record
+export const useCreateBaseView = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<BaseViewRecord, Error, BaseViewCreateRequest>({
+    mutationFn: (request: BaseViewCreateRequest) => baseViewService.createBaseViewRecord(request),
+    onSuccess: () => {
+      // Invalidate and refetch base view data
+      queryClient.invalidateQueries({ queryKey: [BASE_VIEW_QUERY_KEY] });
+    },
+    onError: (error) => {
+      console.error('Failed to create base view record:', error);
+    },
+  });
+};
+
+// Hook for updating a base view record
+export const useUpdateBaseView = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<BaseViewRecord, Error, { srNo: number; request: BaseViewUpdateRequest }>({
+    mutationFn: ({ srNo, request }) => baseViewService.updateBaseViewRecord(srNo, request),
+    onSuccess: () => {
+      // Invalidate and refetch base view data
+      queryClient.invalidateQueries({ queryKey: [BASE_VIEW_QUERY_KEY] });
+    },
+    onError: (error) => {
+      console.error('Failed to update base view record:', error);
+    },
+  });
+};
+
+// Hook for deleting a base view record
+export const useDeleteBaseView = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, number>({
+    mutationFn: (srNo: number) => baseViewService.deleteBaseViewRecord(srNo),
+    onSuccess: () => {
+      // Invalidate and refetch base view data
+      queryClient.invalidateQueries({ queryKey: [BASE_VIEW_QUERY_KEY] });
+    },
+    onError: (error) => {
+      console.error('Failed to delete base view record:', error);
+    },
   });
 };

@@ -17,6 +17,15 @@ export interface BaseViewParams {
   mock?: boolean;
 }
 
+export interface BaseViewCreateRequest {
+  sr_no: number;
+  table_name: string;
+}
+
+export interface BaseViewUpdateRequest {
+  table_name: string;
+}
+
 export const baseViewService = {
   /**
    * Fetch base view data from the API
@@ -51,6 +60,74 @@ export const baseViewService = {
       // Use the utility function to get error message
       const errorMessage = apiUtils.getErrorMessage(axiosError);
       throw new Error(errorMessage || 'Failed to fetch base view data');
+    }
+  },
+
+  /**
+   * Create a new base view record
+   */
+  async createBaseViewRecord(request: BaseViewCreateRequest): Promise<BaseViewRecord> {
+    try {
+      const response = await api.post<BaseViewRecord>('/api/v1/lineage/public/base-view', request);
+      return response.data;
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      
+      if (apiUtils.getErrorStatus(axiosError) === 409) {
+        throw new Error(`Record with serial number ${request.sr_no} already exists`);
+      }
+      
+      if (apiUtils.getErrorStatus(axiosError) === 503) {
+        throw new Error('Database connection not available');
+      }
+      
+      const errorMessage = apiUtils.getErrorMessage(axiosError);
+      throw new Error(errorMessage || 'Failed to create record');
+    }
+  },
+
+  /**
+   * Update an existing base view record
+   */
+  async updateBaseViewRecord(srNo: number, request: BaseViewUpdateRequest): Promise<BaseViewRecord> {
+    try {
+      const response = await api.put<BaseViewRecord>(`/api/v1/lineage/public/base-view/${srNo}`, request);
+      return response.data;
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      
+      if (apiUtils.getErrorStatus(axiosError) === 404) {
+        throw new Error(`Record with serial number ${srNo} not found`);
+      }
+      
+      if (apiUtils.getErrorStatus(axiosError) === 503) {
+        throw new Error('Database connection not available');
+      }
+      
+      const errorMessage = apiUtils.getErrorMessage(axiosError);
+      throw new Error(errorMessage || 'Failed to update record');
+    }
+  },
+
+  /**
+   * Delete a base view record
+   */
+  async deleteBaseViewRecord(srNo: number): Promise<void> {
+    try {
+      await api.delete(`/api/v1/lineage/public/base-view/${srNo}`);
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      
+      if (apiUtils.getErrorStatus(axiosError) === 404) {
+        throw new Error(`Record with serial number ${srNo} not found`);
+      }
+      
+      if (apiUtils.getErrorStatus(axiosError) === 503) {
+        throw new Error('Database connection not available');
+      }
+      
+      const errorMessage = apiUtils.getErrorMessage(axiosError);
+      throw new Error(errorMessage || 'Failed to delete record');
     }
   },
 };

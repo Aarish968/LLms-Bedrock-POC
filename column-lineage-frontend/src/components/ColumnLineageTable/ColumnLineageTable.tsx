@@ -4,6 +4,8 @@ import { Box, Chip, Alert, CircularProgress, Typography, TextField, Button, Stac
 import { Add as AddIcon, Edit as EditIcon, Search as SearchIcon } from '@mui/icons-material'
 import { useBaseView } from '../../hooks/useBaseView'
 import { BaseViewRecord } from '../../api/baseViewService'
+import AddBaseViewModal from '../BaseViewModals/AddBaseViewModal'
+import EditBaseViewModal from '../BaseViewModals/EditBaseViewModal'
 
 interface ColumnLineageTableProps {
   searchQuery: string
@@ -11,6 +13,9 @@ interface ColumnLineageTableProps {
 
 const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
   const [localSearchQuery, setLocalSearchQuery] = useState('')
+  const [addModalOpen, setAddModalOpen] = useState(false)
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [selectedRecord, setSelectedRecord] = useState<BaseViewRecord | null>(null)
 
   // Fetch base view data from API (always enabled, no mock mode)
   const {
@@ -90,13 +95,18 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
 
   // Handle button clicks
   const handleAdd = () => {
-    console.log('Add button clicked')
-    // Add your add functionality here
+    setAddModalOpen(true)
   }
 
   const handleEdit = () => {
-    console.log('Edit button clicked')
-    // Add your edit functionality here
+    // For now, we'll edit the first selected record or show a message
+    // In a real app, you'd get the selected record from DataGrid selection
+    if (dataToUse.length > 0) {
+      setSelectedRecord(dataToUse[0] as BaseViewRecord)
+      setEditModalOpen(true)
+    } else {
+      alert('No records available to edit')
+    }
   }
 
   // Error state
@@ -233,6 +243,18 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
           }}
         />
       </Box>
+
+      {/* Modals */}
+      <AddBaseViewModal
+        open={addModalOpen}
+        onClose={() => setAddModalOpen(false)}
+      />
+      
+      <EditBaseViewModal
+        open={editModalOpen}
+        onClose={() => setEditModalOpen(false)}
+        record={selectedRecord}
+      />
     </Box>
   )
 }
