@@ -85,7 +85,21 @@ async def start_lineage_analysis(
                 
                 # Get the updated job to return the correct status
                 updated_job = job_manager.get_job(job.job_id)
-                final_status = updated_job.status if updated_job else JobStatus.COMPLETED
+                
+                # If the job status is still PENDING after processing, force it to COMPLETED
+                if updated_job and updated_job.status == JobStatus.PENDING:
+                    logger.warning(
+                        "Job status still PENDING after synchronous processing, updating to COMPLETED",
+                        job_id=str(job.job_id)
+                    )
+                    job_manager.update_job_status(
+                        job.job_id,
+                        JobStatus.COMPLETED,
+                        completed_at=datetime.utcnow(),
+                    )
+                    final_status = JobStatus.COMPLETED
+                else:
+                    final_status = updated_job.status if updated_job else JobStatus.COMPLETED
                 
                 return LineageAnalysisResponse(
                     job_id=job.job_id,

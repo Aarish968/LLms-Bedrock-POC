@@ -16,10 +16,20 @@ from api.v1.models.lineage import (
 class JobManager(LoggerMixin):
     """In-memory job manager for lineage analysis jobs."""
     
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(JobManager, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self):
-        # In-memory storage (in production, use Redis or database)
-        self._jobs: Dict[UUID, LineageAnalysisJob] = {}
-        self._job_results: Dict[UUID, List[ColumnLineageResult]] = {}
+        if not self._initialized:
+            # In-memory storage (in production, use Redis or database)
+            self._jobs: Dict[UUID, LineageAnalysisJob] = {}
+            self._job_results: Dict[UUID, List[ColumnLineageResult]] = {}
+            JobManager._initialized = True
     
     def create_job(self, job: LineageAnalysisJob) -> LineageAnalysisJob:
         """Create a new job."""

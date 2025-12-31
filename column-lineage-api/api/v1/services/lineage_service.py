@@ -45,7 +45,11 @@ class LineageService(LoggerMixin):
             
             # Get views to analyze
             if request.view_names:
-                views = await self._get_specific_views(request.view_names)
+                views = await self._get_specific_views(
+                    request.view_names,
+                    database_filter=request.database_filter,
+                    schema_filter=request.schema_filter
+                )
             else:
                 views = await self._discover_views(
                     database_filter=request.database_filter,
@@ -566,14 +570,14 @@ class LineageService(LoggerMixin):
             self.logger.error("Failed to discover views", error=str(e))
             raise
     
-    async def _get_specific_views(self, view_names: List[str]) -> List[ViewInfo]:
-        """Get specific views by name."""
+    async def _get_specific_views(self, view_names: List[str], database_filter: str = None, schema_filter: str = None) -> List[ViewInfo]:
+        """Get specific views by name with proper database and schema context."""
         views = []
         for view_name in view_names:
             views.append(ViewInfo(
                 view_name=view_name,
-                schema_name="UNKNOWN",
-                database_name="CURRENT",
+                schema_name=schema_filter or "UNKNOWN",
+                database_name=database_filter or "CURRENT",
                 column_count=0,
             ))
         return views
