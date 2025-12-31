@@ -159,3 +159,18 @@ uv.lock
 logs/
 temp/
 cache/
+
+# Test files
+test_*.py
+debug_*.py
+*_test.py
+*_debug.py
+*test*.py
+*debug*.py
+
+# Analysis results
+analysis_results/
+
+# Temporary test data
+*.tmp
+*.temp

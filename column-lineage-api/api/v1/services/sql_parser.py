@@ -69,27 +69,41 @@ class SQLParser(LoggerMixin):
                     ddl_info['type'] = 'CREATE_VIEW'
                     ddl_info['is_supported'] = True
                     
-                    # Extract view name
+                    # Extract view name and columns
                     if parsed.this:
-                        ddl_info['object_name'] = str(parsed.this)
-                    
-                    # Extract columns from SELECT statement
-                    if parsed.expression and isinstance(parsed.expression, exp.Select):
-                        select_stmt = parsed.expression
-                        for expr in select_stmt.expressions:
-                            if isinstance(expr, exp.Alias):
-                                ddl_info['object_columns'].append(str(expr.alias))
-                            elif isinstance(expr, exp.Column):
-                                ddl_info['object_columns'].append(str(expr.name))
-                            elif isinstance(expr, exp.Star):
-                                # Wildcard - columns will be resolved later
-                                pass
-                            else:
-                                # Derived column - use expression as column name
-                                expr_str = str(expr)
-                                if len(expr_str) < 50:  # Reasonable column name length
-                                    col_name = expr_str.replace(' ', '_').replace('(', '').replace(')', '')
-                                    ddl_info['object_columns'].append(col_name)
+                        view_def = str(parsed.this)
+                        
+                        # Check if view has explicit column list in parentheses
+                        if '(' in view_def and ')' in view_def:
+                            # Extract view name and column list
+                            parts = view_def.split('(', 1)
+                            ddl_info['object_name'] = parts[0].strip()
+                            
+                            # Extract column names from the parentheses
+                            column_part = parts[1].rsplit(')', 1)[0]
+                            columns = [col.strip() for col in column_part.split(',')]
+                            ddl_info['object_columns'] = columns
+                        else:
+                            # No explicit column list, use view name as is
+                            ddl_info['object_name'] = view_def
+                            
+                            # Extract columns from SELECT statement
+                            if parsed.expression and isinstance(parsed.expression, exp.Select):
+                                select_stmt = parsed.expression
+                                for expr in select_stmt.expressions:
+                                    if isinstance(expr, exp.Alias):
+                                        ddl_info['object_columns'].append(str(expr.alias))
+                                    elif isinstance(expr, exp.Column):
+                                        ddl_info['object_columns'].append(str(expr.name))
+                                    elif isinstance(expr, exp.Star):
+                                        # Wildcard - columns will be resolved later
+                                        pass
+                                    else:
+                                        # Derived column - use expression as column name
+                                        expr_str = str(expr)
+                                        if len(expr_str) < 50:  # Reasonable column name length
+                                            col_name = expr_str.replace(' ', '_').replace('(', '').replace(')', '')
+                                            ddl_info['object_columns'].append(col_name)
                 
                 elif parsed.kind and 'TABLE' in str(parsed.kind).upper():
                     ddl_info['type'] = 'CREATE_TABLE'

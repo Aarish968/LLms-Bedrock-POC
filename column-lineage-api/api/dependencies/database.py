@@ -124,6 +124,11 @@ class DatabaseManager:
             with self.engine.connect() as conn:
                 from sqlalchemy import text
                 result = conn.execute(text(query), params or {})
+                
+                # Commit the transaction for DDL and DML statements
+                if any(keyword in query.upper().strip() for keyword in ['CREATE', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER']):
+                    conn.commit()
+                
                 return result.fetchall()
         except Exception as e:
             self.logger.error("Query execution failed", query=query, error=str(e))

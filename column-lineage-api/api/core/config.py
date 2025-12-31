@@ -1,103 +1,65 @@
-"""Application configuration management."""
+"""Configuration settings for the application."""
 
-from functools import lru_cache
-from typing import List
+import os
+from pathlib import Path
+from typing import Optional
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not available, continue without it
+    pass
 
-
-class Settings(BaseSettings):
+class Settings:
     """Application settings."""
     
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=True,
-    )
+    # Database settings
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     
-    # Environment
-    RUN_ENV: str = Field(default="dev", description="Runtime environment")
-    DEBUG: bool = Field(default=True, description="Debug mode")
+    # Snowflake settings
+    SNOWFLAKE_ACCOUNT: str = os.getenv("SNOWFLAKE_ACCOUNT", "")
+    SNOWFLAKE_USER: str = os.getenv("SNOWFLAKE_USER", "")
+    SNOWFLAKE_PASSWORD: str = os.getenv("SNOWFLAKE_PASSWORD", "")
+    SNOWFLAKE_DATABASE: str = os.getenv("SNOWFLAKE_DATABASE", "")
+    SNOWFLAKE_SCHEMA: str = os.getenv("SNOWFLAKE_SCHEMA", "PUBLIC")
+    SNOWFLAKE_WAREHOUSE: str = os.getenv("SNOWFLAKE_WAREHOUSE", "")
+    SNOWFLAKE_ROLE: str = os.getenv("SNOWFLAKE_ROLE", "")
     
-    # API Configuration
-    PROJECT_NAME: str = Field(default="Column Lineage API", description="Project name")
-    VERSION: str = Field(default="0.1.0", description="API version")
-    API_V1_PREFIX: str = Field(default="/api/v1", description="API v1 prefix")
+    # JWT settings
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
     
-    # Security (Optional for testing)
-    JWT_SECRET_KEY: str = Field(default="test-secret-key-change-in-production", description="JWT secret key")
-    JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
-    JWT_EXPIRE_MINUTES: int = Field(default=30, description="JWT expiration in minutes")
+    # Auto-save settings
+    AUTO_SAVE_RESULTS: bool = os.getenv("AUTO_SAVE_RESULTS", "true").lower() == "true"
+    AUTO_SAVE_TO_DATABASE: bool = os.getenv("AUTO_SAVE_TO_DATABASE", "true").lower() == "true"
+    RESULTS_DIRECTORY: str = os.getenv("RESULTS_DIRECTORY", "analysis_results")
     
-    # CORS and Security
-    CORS_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:8080"],
-        description="Allowed CORS origins"
-    )
-    ALLOWED_HOSTS: List[str] = Field(
-        default=["localhost", "127.0.0.1"],
-        description="Allowed hosts"
-    )
+    # API settings
+    PROJECT_NAME: str = os.getenv("PROJECT_NAME", "Column Lineage API")
+    VERSION: str = os.getenv("VERSION", "0.1.0")
+    API_V1_PREFIX: str = os.getenv("API_V1_PREFIX", "/api/v1")
+    RUN_ENV: str = os.getenv("RUN_ENV", "dev")
     
-    # Database Configuration (Optional for testing)
-    SNOWFLAKE_ACCOUNT: str = Field(default="", description="Snowflake account")
-    SNOWFLAKE_USER: str = Field(default="", description="Snowflake user")
-    SNOWFLAKE_PASSWORD: str = Field(default="", description="Snowflake password")
-    SNOWFLAKE_DATABASE: str = Field(default="", description="Snowflake database")
-    SNOWFLAKE_SCHEMA: str = Field(default="", description="Snowflake schema")
-    SNOWFLAKE_WAREHOUSE: str = Field(default="", description="Snowflake warehouse")
-    SNOWFLAKE_ROLE: str = Field(default="", description="Snowflake role")
+    # CORS settings
+    CORS_ORIGINS: list = eval(os.getenv("CORS_ORIGINS", '["http://localhost:3000", "http://localhost:8080"]'))
+    ALLOWED_HOSTS: list = eval(os.getenv("ALLOWED_HOSTS", '["localhost", "127.0.0.1"]'))
     
-    # AWS Configuration (Optional for testing)
-    AWS_REGION: str = Field(default="us-east-1", description="AWS region")
-    AWS_ACCESS_KEY_ID: str = Field(default="", description="AWS access key ID")
-    AWS_SECRET_ACCESS_KEY: str = Field(default="", description="AWS secret access key")
+    # Logging settings
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_FORMAT: str = os.getenv("LOG_FORMAT", "json")
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
     
-    # AWS Cognito (optional)
-    COGNITO_USER_POOL_ID: str = Field(default="", description="Cognito user pool ID")
-    COGNITO_APP_CLIENT_ID: str = Field(default="", description="Cognito app client ID")
-    AWS_REGION: str = Field(default="us-east-1", description="AWS region")
-    
-    # Redis Configuration
-    REDIS_URL: str = Field(default="redis://localhost:6379/0", description="Redis URL")
-    
-    # Logging
-    LOG_LEVEL: str = Field(default="INFO", description="Log level")
-    LOG_FORMAT: str = Field(default="json", description="Log format")
-    
-    @property
-    def snowflake_url(self) -> str:
-        """Generate Snowflake connection URL."""
-        if not all([self.SNOWFLAKE_ACCOUNT, self.SNOWFLAKE_USER, self.SNOWFLAKE_PASSWORD]):
-            return ""
-        
-        # URL encode the password to handle special characters
-        from urllib.parse import quote_plus
-        encoded_password = quote_plus(self.SNOWFLAKE_PASSWORD)
-        encoded_user = quote_plus(self.SNOWFLAKE_USER)
-        
-        # For organization-account format, SQLAlchemy needs specific handling
-        # Format: snowflake://user:password@account/database/schema?warehouse=wh&role=role
-        return (
-            f"snowflake://{encoded_user}:{encoded_password}"
-            f"@{self.SNOWFLAKE_ACCOUNT}/"
-            f"{self.SNOWFLAKE_DATABASE}/{self.SNOWFLAKE_SCHEMA}"
-            f"?warehouse={self.SNOWFLAKE_WAREHOUSE}&role={self.SNOWFLAKE_ROLE}"
-        )
-    
-    @property
-    def is_development(self) -> bool:
-        """Check if running in development mode."""
-        return self.RUN_ENV.lower() in ("dev", "development", "local")
-    
-    @property
-    def is_production(self) -> bool:
-        """Check if running in production mode."""
-        return self.RUN_ENV.lower() in ("prod", "production")
+    def __init__(self):
+        # Ensure results directory exists if auto-save is enabled
+        if self.AUTO_SAVE_RESULTS:
+            Path(self.RESULTS_DIRECTORY).mkdir(exist_ok=True)
 
+# Global settings instance
+settings = Settings()
 
-@lru_cache()
 def get_settings() -> Settings:
-    """Get cached application settings."""
-    return Settings()
+    """Get application settings."""
+    return settings

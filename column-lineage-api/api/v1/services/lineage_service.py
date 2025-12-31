@@ -105,6 +105,17 @@ class LineageService(LoggerMixin):
             # Store results
             self.job_manager.store_job_results(job_id, results)
             
+            # Auto-save results to CSV file
+            await self._auto_save_results_to_csv(job_id, results)
+            
+            # Auto-save results to database table in the same database and schema
+            await self._auto_save_results_to_database(
+                job_id, 
+                results, 
+                request.database_filter, 
+                request.schema_filter
+            )
+            
             # Update job completion
             self.job_manager.update_job_status(
                 job_id,
@@ -824,3 +835,183 @@ class LineageService(LoggerMixin):
             df.to_excel(writer, sheet_name="Column_Lineage", index=False)
         
         return output.getvalue()
+    
+    async def _auto_save_results_to_csv(self, job_id: UUID, results: List[ColumnLineageResult]) -> None:
+        """Auto-save analysis results to CSV file when job completes."""
+        try:
+            from api.core.config import get_settings
+            from pathlib import Path
+            
+            settings = get_settings()
+            
+            # Check if auto-save is enabled
+            if not settings.AUTO_SAVE_RESULTS:
+                self.logger.debug("Auto-save disabled, skipping CSV export", job_id=str(job_id))
+                return
+            
+            # Create results directory if it doesn't exist
+            results_dir = Path(settings.RESULTS_DIRECTORY)
+            results_dir.mkdir(exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"lineage_analysis_{str(job_id)[:8]}_{timestamp}.csv"
+            filepath = results_dir / filename
+            
+            self.logger.info("Auto-saving results to CSV", job_id=str(job_id), filepath=str(filepath))
+            
+            # Generate CSV content
+            csv_content = await self._export_csv(results, include_metadata=True)
+            
+            # Write to file
+            with open(filepath, 'wb') as f:
+                f.write(csv_content)
+            
+            self.logger.info(
+                "Results auto-saved successfully", 
+                job_id=str(job_id), 
+                filepath=str(filepath),
+                results_count=len(results),
+                file_size_bytes=len(csv_content)
+            )
+            
+        except Exception as e:
+            self.logger.error("Failed to auto-save results to CSV", job_id=str(job_id), error=str(e))
+            # Don't raise the exception - auto-save failure shouldn't break the analysis
+    
+    async def _auto_save_results_to_database(
+        self, 
+        job_id: UUID, 
+        results: List[ColumnLineageResult], 
+        database_name: str, 
+        schema_name: str
+    ) -> None:
+        """Auto-save analysis results to Snowflake table in the same database and schema."""
+        try:
+            from api.core.config import get_settings
+            
+            settings = get_settings()
+            
+            # Check if database auto-save is enabled
+            if not settings.AUTO_SAVE_TO_DATABASE:
+                self.logger.debug("Auto-save to database disabled", job_id=str(job_id))
+                return
+            
+            if not results:
+                self.logger.info("No results to save to database", job_id=str(job_id))
+                return
+            
+            # Table name for storing lineage results
+            table_name = "COLUMN_LINEAGE_RESULTS"
+            full_table_name = f"{database_name}.{schema_name}.{table_name}"
+            
+            self.logger.info(
+                "Auto-saving results to database table", 
+                job_id=str(job_id), 
+                table_name=full_table_name,
+                results_count=len(results)
+            )
+            
+            # Create table if it doesn't exist
+            await self._create_lineage_results_table(database_name, schema_name, table_name)
+            
+            # Insert results into table
+            await self._insert_lineage_results(results, database_name, schema_name, table_name, job_id)
+            
+            self.logger.info(
+                "Results auto-saved to database successfully", 
+                job_id=str(job_id), 
+                table_name=full_table_name,
+                results_count=len(results)
+            )
+            
+        except Exception as e:
+            self.logger.error("Failed to auto-save results to database", job_id=str(job_id), error=str(e))
+            # Don't raise the exception - auto-save failure shouldn't break the analysis
+    
+    async def _create_lineage_results_table(self, database_name: str, schema_name: str, table_name: str) -> None:
+        """Create the lineage results table if it doesn't exist."""
+        try:
+            full_table_name = f"{database_name}.{schema_name}.{table_name}"
+            
+            create_table_sql = f"""
+            CREATE TABLE IF NOT EXISTS {full_table_name} (
+                JOB_ID VARCHAR(36) NOT NULL,
+                VIEW_NAME VARCHAR(255) NOT NULL,
+                VIEW_COLUMN VARCHAR(255) NOT NULL,
+                COLUMN_TYPE VARCHAR(50) NOT NULL,
+                SOURCE_TABLE VARCHAR(500) NOT NULL,
+                SOURCE_COLUMN VARCHAR(255) NOT NULL,
+                EXPRESSION_TYPE VARCHAR(50),
+                ANALYSIS_TIMESTAMP TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+                CREATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+            )
+            """
+            
+            self.logger.debug("Creating lineage results table", sql=create_table_sql)
+            self.db_manager.execute_query(create_table_sql)
+            
+            self.logger.info("Lineage results table created/verified", table_name=full_table_name)
+            
+        except Exception as e:
+            self.logger.error("Failed to create lineage results table", error=str(e))
+            raise
+    
+    async def _insert_lineage_results(
+        self, 
+        results: List[ColumnLineageResult], 
+        database_name: str, 
+        schema_name: str, 
+        table_name: str,
+        job_id: UUID
+    ) -> None:
+        """Insert lineage results into the database table."""
+        try:
+            full_table_name = f"{database_name}.{schema_name}.{table_name}"
+            
+            # Prepare batch insert data
+            insert_data = []
+            for result in results:
+                insert_data.append({
+                    'job_id': str(job_id),
+                    'view_name': result.view_name,
+                    'view_column': result.view_column,
+                    'column_type': result.column_type.value,
+                    'source_table': result.source_table,
+                    'source_column': result.source_column,
+                    'expression_type': result.expression_type.value if result.expression_type else None
+                })
+            
+            # Insert in batches to avoid query size limits
+            batch_size = 100
+            total_inserted = 0
+            
+            for i in range(0, len(insert_data), batch_size):
+                batch = insert_data[i:i + batch_size]
+                
+                # Build VALUES clause for batch insert
+                values_clauses = []
+                for row in batch:
+                    expression_type = f"'{row['expression_type']}'" if row['expression_type'] else "NULL"
+                    values_clause = f"('{row['job_id']}', '{row['view_name']}', '{row['view_column']}', '{row['column_type']}', '{row['source_table']}', '{row['source_column']}', {expression_type}, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())"
+                    values_clauses.append(values_clause)
+                
+                insert_sql = f"""
+                INSERT INTO {full_table_name} 
+                (JOB_ID, VIEW_NAME, VIEW_COLUMN, COLUMN_TYPE, SOURCE_TABLE, SOURCE_COLUMN, EXPRESSION_TYPE, ANALYSIS_TIMESTAMP, CREATED_AT)
+                VALUES {', '.join(values_clauses)}
+                """
+                
+                self.logger.debug(f"Inserting batch {i//batch_size + 1}", batch_size=len(batch))
+                self.db_manager.execute_query(insert_sql)
+                total_inserted += len(batch)
+            
+            self.logger.info(
+                "Lineage results inserted successfully", 
+                table_name=full_table_name,
+                total_inserted=total_inserted
+            )
+            
+        except Exception as e:
+            self.logger.error("Failed to insert lineage results", error=str(e))
+            raise

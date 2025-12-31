@@ -796,3 +796,318 @@ async def delete_base_view_record(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete record: {str(e)}",
         )
+
+
+@router.get("/saved-results")
+async def list_saved_results(
+    current_user: User = Depends(get_current_active_user),
+):
+    """List all saved CSV result files."""
+    logger.info("Listing saved result files", user_id=current_user.id)
+    
+    try:
+        from api.core.config import get_settings
+        from pathlib import Path
+        import os
+        
+        settings = get_settings()
+        results_dir = Path(settings.RESULTS_DIRECTORY)
+        
+        if not results_dir.exists():
+            return {"files": [], "message": "No results directory found"}
+        
+        # Get all CSV files in the results directory
+        csv_files = []
+        for file_path in results_dir.glob("lineage_analysis_*.csv"):
+            stat = file_path.stat()
+            csv_files.append({
+                "filename": file_path.name,
+                "filepath": str(file_path),
+                "size_bytes": stat.st_size,
+                "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+        
+        # Sort by creation time (newest first)
+        csv_files.sort(key=lambda x: x["created_at"], reverse=True)
+        
+        return {
+            "files": csv_files,
+            "total_files": len(csv_files),
+            "directory": str(results_dir)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list saved results", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list saved results: {str(e)}",
+        )
+
+
+@router.get("/public/saved-results")
+async def list_saved_results_public():
+    """List all saved CSV result files (public endpoint)."""
+    logger.info("Listing saved result files (public)")
+    
+    try:
+        from api.core.config import get_settings
+        from pathlib import Path
+        
+        settings = get_settings()
+        results_dir = Path(settings.RESULTS_DIRECTORY)
+        
+        if not results_dir.exists():
+            return {"files": [], "message": "No results directory found"}
+        
+        # Get all CSV files in the results directory
+        csv_files = []
+        for file_path in results_dir.glob("lineage_analysis_*.csv"):
+            stat = file_path.stat()
+            csv_files.append({
+                "filename": file_path.name,
+                "filepath": str(file_path),
+                "size_bytes": stat.st_size,
+                "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+        
+        # Sort by creation time (newest first)
+        csv_files.sort(key=lambda x: x["created_at"], reverse=True)
+        
+        return {
+            "files": csv_files,
+            "total_files": len(csv_files),
+            "directory": str(results_dir)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list saved results", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list saved results: {str(e)}",
+        )
+
+
+@router.get("/database-results/{database_name}/{schema_name}")
+async def get_database_results(
+    database_name: str,
+    schema_name: str,
+    job_id: Optional[str] = None,
+    limit: Optional[int] = 100,
+    offset: int = 0,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get lineage results from database table."""
+    logger.info(
+        "Getting database results",
+        database_name=database_name,
+        schema_name=schema_name,
+        job_id=job_id,
+        limit=limit,
+        offset=offset,
+        user_id=current_user.id
+    )
+    
+    try:
+        table_name = "COLUMN_LINEAGE_RESULTS"
+        full_table_name = f"{database_name}.{schema_name}.{table_name}"
+        
+        # Build query with optional job_id filter
+        where_clause = ""
+        if job_id:
+            where_clause = f"WHERE JOB_ID = '{job_id}'"
+        
+        # Count total records
+        count_query = f"SELECT COUNT(*) as total FROM {full_table_name} {where_clause}"
+        count_result = lineage_service.db_manager.execute_query(count_query)
+        total_records = count_result[0][0] if count_result else 0
+        
+        # Get paginated data
+        query = f"""
+        SELECT 
+            JOB_ID,
+            VIEW_NAME,
+            VIEW_COLUMN,
+            COLUMN_TYPE,
+            SOURCE_TABLE,
+            SOURCE_COLUMN,
+            EXPRESSION_TYPE,
+            ANALYSIS_TIMESTAMP,
+            CREATED_AT
+        FROM {full_table_name}
+        {where_clause}
+        ORDER BY CREATED_AT DESC, VIEW_NAME, VIEW_COLUMN
+        """
+        
+        if limit:
+            query += f" LIMIT {limit}"
+        if offset:
+            query += f" OFFSET {offset}"
+        
+        results = lineage_service.db_manager.execute_query(query)
+        
+        # Convert results to list of dictionaries
+        records = []
+        for row in results:
+            records.append({
+                "job_id": row[0],
+                "view_name": row[1],
+                "view_column": row[2],
+                "column_type": row[3],
+                "source_table": row[4],
+                "source_column": row[5],
+                "expression_type": row[6],
+                "analysis_timestamp": row[7].isoformat() if row[7] else None,
+                "created_at": row[8].isoformat() if row[8] else None,
+            })
+        
+        return {
+            "database_name": database_name,
+            "schema_name": schema_name,
+            "table_name": table_name,
+            "total_records": total_records,
+            "records": records,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get database results", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve database results: {str(e)}",
+        )
+
+
+@router.get("/public/database-results/{database_name}/{schema_name}")
+async def get_database_results_public(
+    database_name: str,
+    schema_name: str,
+    job_id: Optional[str] = None,
+    limit: Optional[int] = 100,
+    offset: int = 0,
+):
+    """Get lineage results from database table (public endpoint)."""
+    logger.info(
+        "Getting database results (public)",
+        database_name=database_name,
+        schema_name=schema_name,
+        job_id=job_id,
+        limit=limit,
+        offset=offset
+    )
+    
+    try:
+        table_name = "COLUMN_LINEAGE_RESULTS"
+        full_table_name = f"{database_name}.{schema_name}.{table_name}"
+        
+        # Build query with optional job_id filter
+        where_clause = ""
+        if job_id:
+            where_clause = f"WHERE JOB_ID = '{job_id}'"
+        
+        # Count total records
+        count_query = f"SELECT COUNT(*) as total FROM {full_table_name} {where_clause}"
+        count_result = lineage_service.db_manager.execute_query(count_query)
+        total_records = count_result[0][0] if count_result else 0
+        
+        # Get paginated data
+        query = f"""
+        SELECT 
+            JOB_ID,
+            VIEW_NAME,
+            VIEW_COLUMN,
+            COLUMN_TYPE,
+            SOURCE_TABLE,
+            SOURCE_COLUMN,
+            EXPRESSION_TYPE,
+            ANALYSIS_TIMESTAMP,
+            CREATED_AT
+        FROM {full_table_name}
+        {where_clause}
+        ORDER BY CREATED_AT DESC, VIEW_NAME, VIEW_COLUMN
+        """
+        
+        if limit:
+            query += f" LIMIT {limit}"
+        if offset:
+            query += f" OFFSET {offset}"
+        
+        results = lineage_service.db_manager.execute_query(query)
+        
+        # Convert results to list of dictionaries
+        records = []
+        for row in results:
+            records.append({
+                "job_id": row[0],
+                "view_name": row[1],
+                "view_column": row[2],
+                "column_type": row[3],
+                "source_table": row[4],
+                "source_column": row[5],
+                "expression_type": row[6],
+                "analysis_timestamp": row[7].isoformat() if row[7] else None,
+                "created_at": row[8].isoformat() if row[8] else None,
+            })
+        
+        return {
+            "database_name": database_name,
+            "schema_name": schema_name,
+            "table_name": table_name,
+            "total_records": total_records,
+            "records": records,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get database results", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve database results: {str(e)}",
+        )
+
+
+@router.get("/public/saved-results")
+async def list_saved_results_public():
+    """List all saved CSV result files (public endpoint)."""
+    logger.info("Listing saved result files (public)")
+    
+    try:
+        from api.core.config import get_settings
+        from pathlib import Path
+        
+        settings = get_settings()
+        results_dir = Path(settings.RESULTS_DIRECTORY)
+        
+        if not results_dir.exists():
+            return {"files": [], "message": "No results directory found"}
+        
+        # Get all CSV files in the results directory
+        csv_files = []
+        for file_path in results_dir.glob("lineage_analysis_*.csv"):
+            stat = file_path.stat()
+            csv_files.append({
+                "filename": file_path.name,
+                "filepath": str(file_path),
+                "size_bytes": stat.st_size,
+                "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            })
+        
+        # Sort by creation time (newest first)
+        csv_files.sort(key=lambda x: x["created_at"], reverse=True)
+        
+        return {
+            "files": csv_files,
+            "total_files": len(csv_files),
+            "directory": str(results_dir)
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list saved results", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list saved results: {str(e)}",
+        )
