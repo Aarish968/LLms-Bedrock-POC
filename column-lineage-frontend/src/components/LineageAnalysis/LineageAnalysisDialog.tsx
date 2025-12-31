@@ -5,7 +5,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  TextField,
   FormControlLabel,
   Switch,
   Box,
@@ -16,7 +15,10 @@ import {
   Divider,
 } from '@mui/material';
 import { PlayArrow, Cancel, Visibility, Refresh } from '@mui/icons-material';
-import { useLineageWorkflow, useAvailableViews } from '@/hooks/lineage/useLineageAnalysis';
+import { useLineageWorkflow } from '@/hooks/lineage/useLineageAnalysis';
+import { useAvailableViews } from '@/hooks/lineage/useAvailableViews';
+import DatabaseSchemaSelector from './DatabaseSchemaSelector';
+import DebugInfo from './DebugInfo';
 
 interface LineageAnalysisDialogProps {
   open: boolean;
@@ -24,7 +26,8 @@ interface LineageAnalysisDialogProps {
 }
 
 const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onClose }) => {
-  const [schemaFilter, setSchemaFilter] = useState('');
+  const [selectedDatabase, setSelectedDatabase] = useState('');
+  const [selectedSchema, setSelectedSchema] = useState('');
   const [asyncProcessing, setAsyncProcessing] = useState(true);
   const [includeMetadata, setIncludeMetadata] = useState(true);
 
@@ -44,11 +47,15 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
     isJobFailed,
   } = useLineageWorkflow();
 
-  const { data: availableViews, isLoading: viewsLoading } = useAvailableViews(schemaFilter);
+  const { data: availableViews, isLoading: viewsLoading } = useAvailableViews(
+    selectedDatabase, 
+    selectedSchema
+  );
 
   const handleStartAnalysis = async () => {
     await startAnalysis({
-      schema_filter: schemaFilter || undefined,
+      database_filter: selectedDatabase,
+      schema_filter: selectedSchema,
       async_processing: asyncProcessing,
       include_metadata: includeMetadata,
     });
@@ -56,8 +63,12 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
 
   const handleClose = () => {
     resetWorkflow();
+    setSelectedDatabase('');
+    setSelectedSchema('');
     onClose();
   };
+
+  const canStartAnalysis = selectedDatabase && selectedSchema && !isAnalysisRunning && !viewsLoading;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -98,6 +109,15 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
       </DialogTitle>
 
       <DialogContent>
+        {/* Debug Info - Remove this in production */}
+        <DebugInfo
+          currentJobId={currentJobId}
+          jobStatus={jobStatus}
+          isAnalysisRunning={isAnalysisRunning}
+          isJobRunning={isJobRunning}
+          isJobCompleted={isJobCompleted}
+        />
+
         {!currentJobId ? (
           // Configuration Phase
           <Box>
@@ -105,14 +125,12 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
               Configure and start column lineage analysis for your database views.
             </Typography>
 
-            <TextField
-              fullWidth
-              label="Schema Filter (Optional)"
-              placeholder="e.g., PUBLIC, ANALYTICS"
-              value={schemaFilter}
-              onChange={(e) => setSchemaFilter(e.target.value)}
-              sx={{ mb: 2 }}
-              helperText="Leave empty to analyze all schemas"
+            <DatabaseSchemaSelector
+              selectedDatabase={selectedDatabase}
+              selectedSchema={selectedSchema}
+              onDatabaseChange={setSelectedDatabase}
+              onSchemaChange={setSelectedSchema}
+              disabled={isAnalysisRunning}
             />
 
             <Box sx={{ mb: 2 }}>
@@ -146,42 +164,44 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
             </Box>
 
             {/* Available Views Preview */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Available Views Preview
-              </Typography>
-              {viewsLoading ? (
-                <Typography variant="body2" color="text.secondary">
-                  Loading views...
+            {selectedDatabase && selectedSchema && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Available Views Preview
                 </Typography>
-              ) : availableViews && availableViews.length > 0 ? (
-                <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Found {availableViews.length} views
+                {viewsLoading ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Loading views...
                   </Typography>
-                  <Box sx={{ maxHeight: 100, overflow: 'auto' }}>
-                    {availableViews.slice(0, 10).map((view, index) => (
-                      <Chip
-                        key={index}
-                        label={`${view.schema_name}.${view.view_name}`}
-                        size="small"
-                        variant="outlined"
-                        sx={{ mr: 1, mb: 1 }}
-                      />
-                    ))}
-                    {availableViews.length > 10 && (
-                      <Typography variant="caption" color="text.secondary">
-                        ... and {availableViews.length - 10} more
-                      </Typography>
-                    )}
+                ) : availableViews && availableViews.length > 0 ? (
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      Found {availableViews.length} views in {selectedDatabase}.{selectedSchema}
+                    </Typography>
+                    <Box sx={{ maxHeight: 100, overflow: 'auto' }}>
+                      {availableViews.slice(0, 10).map((view, index) => (
+                        <Chip
+                          key={index}
+                          label={view.view_name}
+                          size="small"
+                          variant="outlined"
+                          sx={{ mr: 1, mb: 1 }}
+                        />
+                      ))}
+                      {availableViews.length > 10 && (
+                        <Typography variant="caption" color="text.secondary">
+                          ... and {availableViews.length - 10} more
+                        </Typography>
+                      )}
+                    </Box>
                   </Box>
-                </Box>
-              ) : (
-                <Alert severity="warning">
-                  No views found. Check your database connection and schema filter.
-                </Alert>
-              )}
-            </Box>
+                ) : (
+                  <Alert severity="warning">
+                    No views found in {selectedDatabase}.{selectedSchema}
+                  </Alert>
+                )}
+              </Box>
+            )}
           </Box>
         ) : (
           // Job Status Phase
@@ -268,7 +288,7 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
             variant="contained"
             startIcon={<PlayArrow />}
             onClick={handleStartAnalysis}
-            disabled={isAnalysisRunning || viewsLoading}
+            disabled={!canStartAnalysis}
           >
             {isAnalysisRunning ? 'Starting...' : 'Start Analysis'}
           </Button>

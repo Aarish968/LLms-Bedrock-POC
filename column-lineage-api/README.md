@@ -29,6 +29,7 @@ uv sync
 
 # Run development server
 uv run uvicorn api.main:app --reload
+python -m uv run uvicorn api.main:app --reload
 ```
 
 ### Option 2: Using pip

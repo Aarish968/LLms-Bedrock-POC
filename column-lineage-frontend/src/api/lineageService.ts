@@ -3,7 +3,8 @@ import { api, apiUtils, AxiosError } from './client';
 // Types for lineage analysis API
 export interface LineageAnalysisRequest {
   view_names?: string[];
-  schema_filter?: string;
+  database_filter: string;  // Made mandatory
+  schema_filter: string;    // Made mandatory
   async_processing?: boolean;
   include_metadata?: boolean;
 }
@@ -30,9 +31,10 @@ export interface LineageAnalysisJob {
 export interface ViewInfo {
   schema_name: string;
   view_name: string;
-  view_definition: string;
-  created_at?: string;
-  updated_at?: string;
+  database_name: string;
+  column_count: number;
+  created_date?: string;
+  last_modified?: string;
 }
 
 export interface LineageResult {
@@ -41,8 +43,9 @@ export interface LineageResult {
   source_table: string;
   source_column: string;
   confidence_score: number;
-  transformation_logic?: string;
-  data_type?: string;
+  column_type?: string;
+  expression_type?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface LineageResultsResponse {
@@ -139,11 +142,17 @@ export const lineageService = {
   /**
    * List available views
    */
-  async getAvailableViews(schemaFilter?: string, limit: number = 100, offset: number = 0): Promise<ViewInfo[]> {
+  async getAvailableViews(
+    databaseFilter: string, 
+    schemaFilter: string, 
+    limit: number = 100, 
+    offset: number = 0
+  ): Promise<ViewInfo[]> {
     try {
-      // Use public endpoint for testing
+      // Use public endpoint with mandatory filters
       const response = await api.get<ViewInfo[]>('/api/v1/lineage/public/views', {
         params: {
+          database_filter: databaseFilter,
           schema_filter: schemaFilter,
           limit,
           offset,

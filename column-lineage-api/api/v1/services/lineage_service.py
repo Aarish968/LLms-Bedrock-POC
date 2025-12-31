@@ -48,6 +48,7 @@ class LineageService(LoggerMixin):
                 views = await self._get_specific_views(request.view_names)
             else:
                 views = await self._discover_views(
+                    database_filter=request.database_filter,
                     schema_filter=request.schema_filter,
                     include_system_views=request.include_system_views,
                     max_views=request.max_views,
@@ -64,8 +65,12 @@ class LineageService(LoggerMixin):
                 try:
                     self.logger.info("Processing view", view_name=view.view_name)
                     
-                    # Get view DDL
-                    ddl = await self._get_view_ddl(view.view_name)
+                    # Get view DDL with database and schema context
+                    ddl = await self._get_view_ddl(
+                        view.view_name, 
+                        view.database_name, 
+                        view.schema_name
+                    )
                     if not ddl:
                         self.logger.warning("No DDL found for view", view_name=view.view_name)
                         failed_views += 1
@@ -124,34 +129,215 @@ class LineageService(LoggerMixin):
             )
             raise
     
-    async def get_available_views(
-        self,
-        schema_filter: Optional[str] = None,
-        limit: Optional[int] = 100,
-        offset: int = 0,
-    ) -> List[ViewInfo]:
-        """Get list of available database views."""
-        self.logger.info("Getting available views", schema_filter=schema_filter)
+    async def get_available_databases(self) -> List[str]:
+        """Get list of available databases."""
+        self.logger.info("Getting available databases")
         
         try:
             query = """
+            SELECT DATABASE_NAME
+            FROM INFORMATION_SCHEMA.DATABASES
+            ORDER BY DATABASE_NAME
+            """
+            
+            results = self.db_manager.execute_query(query)
+            
+            # Handle different possible column name cases
+            databases = []
+            for row in results:
+                # Try different column name variations
+                db_name = None
+                for attr in ['DATABASE_NAME', 'database_name', 'Database_Name']:
+                    try:
+                        db_name = getattr(row, attr, None)
+                        if db_name:
+                            break
+                    except AttributeError:
+                        continue
+                
+                # If attribute access fails, try dictionary-style access
+                if not db_name and hasattr(row, '_mapping'):
+                    mapping = row._mapping
+                    for key in ['DATABASE_NAME', 'database_name', 'Database_Name']:
+                        if key in mapping:
+                            db_name = mapping[key]
+                            break
+                
+                # If still no luck, try index access (first column)
+                if not db_name:
+                    try:
+                        db_name = row[0]
+                    except (IndexError, TypeError):
+                        pass
+                
+                if db_name:
+                    databases.append(db_name)
+            
+            self.logger.info(f"Found {len(databases)} databases: {databases}")
+            return databases
+            
+        except Exception as e:
+            self.logger.error("Failed to get available databases", error=str(e))
+            # Log the actual row structure for debugging
+            try:
+                results = self.db_manager.execute_query(query)
+                if results:
+                    sample_row = results[0]
+                    self.logger.error(f"Sample row structure: {dir(sample_row)}")
+                    if hasattr(sample_row, '_mapping'):
+                        self.logger.error(f"Row mapping keys: {list(sample_row._mapping.keys())}")
+            except Exception as debug_error:
+                self.logger.error(f"Debug query failed: {debug_error}")
+            raise
+
+    async def get_available_schemas(self, database_filter: str) -> List[str]:
+        """Get list of available schemas for a specific database."""
+        self.logger.info("Getting available schemas", database_filter=database_filter)
+        
+        try:
+            # First, we need to switch to the target database context to query its schemas
+            # In Snowflake, we can query schemas from INFORMATION_SCHEMA.SCHEMATA
+            # but we need to specify the database context
+            query = f"""
+            SELECT SCHEMA_NAME
+            FROM {database_filter}.INFORMATION_SCHEMA.SCHEMATA
+            WHERE CATALOG_NAME = :database_filter
+            ORDER BY SCHEMA_NAME
+            """
+            
+            params = {"database_filter": database_filter}
+            results = self.db_manager.execute_query(query, params)
+            
+            # Handle different possible column name cases
+            schemas = []
+            for row in results:
+                # Try different column name variations
+                schema_name = None
+                for attr in ['SCHEMA_NAME', 'schema_name', 'Schema_Name']:
+                    try:
+                        schema_name = getattr(row, attr, None)
+                        if schema_name:
+                            break
+                    except AttributeError:
+                        continue
+                
+                # If attribute access fails, try dictionary-style access
+                if not schema_name and hasattr(row, '_mapping'):
+                    mapping = row._mapping
+                    for key in ['SCHEMA_NAME', 'schema_name', 'Schema_Name']:
+                        if key in mapping:
+                            schema_name = mapping[key]
+                            break
+                
+                # If still no luck, try index access (first column)
+                if not schema_name:
+                    try:
+                        schema_name = row[0]
+                    except (IndexError, TypeError):
+                        pass
+                
+                if schema_name:
+                    schemas.append(schema_name)
+            
+            self.logger.info(f"Found {len(schemas)} schemas for database {database_filter}")
+            return schemas
+            
+        except Exception as e:
+            self.logger.error("Failed to get available schemas", error=str(e))
+            # Fallback: try without database prefix
+            try:
+                self.logger.info("Trying fallback query without database prefix")
+                query = """
+                SELECT DISTINCT SCHEMA_NAME
+                FROM INFORMATION_SCHEMA.SCHEMATA
+                WHERE CATALOG_NAME = :database_filter
+                ORDER BY SCHEMA_NAME
+                """
+                
+                params = {"database_filter": database_filter}
+                results = self.db_manager.execute_query(query, params)
+                
+                # Handle different possible column name cases
+                schemas = []
+                for row in results:
+                    # Try different column name variations
+                    schema_name = None
+                    for attr in ['SCHEMA_NAME', 'schema_name', 'Schema_Name']:
+                        try:
+                            schema_name = getattr(row, attr, None)
+                            if schema_name:
+                                break
+                        except AttributeError:
+                            continue
+                    
+                    # If attribute access fails, try dictionary-style access
+                    if not schema_name and hasattr(row, '_mapping'):
+                        mapping = row._mapping
+                        for key in ['SCHEMA_NAME', 'schema_name', 'Schema_Name']:
+                            if key in mapping:
+                                schema_name = mapping[key]
+                                break
+                    
+                    # If still no luck, try index access (first column)
+                    if not schema_name:
+                        try:
+                            schema_name = row[0]
+                        except (IndexError, TypeError):
+                            pass
+                    
+                    if schema_name:
+                        schemas.append(schema_name)
+                
+                self.logger.info(f"Found {len(schemas)} schemas for database {database_filter} (fallback)")
+                return schemas
+                
+            except Exception as fallback_error:
+                self.logger.error("Fallback query also failed", error=str(fallback_error))
+                raise
+
+    async def get_available_views(
+        self,
+        schema_filter: str,  # Made mandatory
+        database_filter: str,  # Added mandatory database filter
+        limit: Optional[int] = 100,
+        offset: int = 0,
+    ) -> List[ViewInfo]:
+        """
+        Get list of available database views with mandatory filters.
+        
+        Parameters:
+        - schema_filter: Schema name to filter views (required)
+        - database_filter: Database name to filter views (required)
+        - limit: Maximum number of views to return (default: 100)
+        - offset: Number of views to skip for pagination (default: 0)
+        """
+        self.logger.info(
+            "Getting available views", 
+            schema_filter=schema_filter,
+            database_filter=database_filter,
+            limit=limit,
+            offset=offset
+        )
+        
+        try:
+            # Query views from the specific database's INFORMATION_SCHEMA
+            query = f"""
             SELECT 
                 TABLE_NAME as view_name,
                 TABLE_SCHEMA as schema_name,
                 TABLE_CATALOG as database_name,
                 CREATED as created_date,
                 LAST_ALTERED as last_modified
-            FROM INFORMATION_SCHEMA.VIEWS
-            WHERE TABLE_CATALOG = CURRENT_DATABASE()
+            FROM {database_filter}.INFORMATION_SCHEMA.VIEWS
+            WHERE TABLE_CATALOG = :database_filter
+            AND TABLE_SCHEMA = :schema_filter
+            ORDER BY TABLE_NAME
             """
             
-            params = {}
-            
-            if schema_filter:
-                query += " AND TABLE_SCHEMA = :schema_filter"
-                params["schema_filter"] = schema_filter
-            
-            query += " ORDER BY TABLE_NAME"
+            params = {
+                "schema_filter": schema_filter,
+                "database_filter": database_filter
+            }
             
             if limit:
                 query += f" LIMIT {limit}"
@@ -162,18 +348,22 @@ class LineageService(LoggerMixin):
             
             views = []
             for row in results:
-                # Get column count for each view
-                col_count_query = """
+                # Get column count for each view from the specific database
+                col_count_query = f"""
                 SELECT COUNT(*) as column_count
-                FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_CATALOG = CURRENT_DATABASE()
+                FROM {database_filter}.INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_CATALOG = :database_name
                 AND TABLE_SCHEMA = :schema_name
                 AND TABLE_NAME = :view_name
                 """
                 
                 col_result = self.db_manager.execute_query(
                     col_count_query,
-                    {"schema_name": row.schema_name, "view_name": row.view_name}
+                    {
+                        "database_name": row.database_name,
+                        "schema_name": row.schema_name, 
+                        "view_name": row.view_name
+                    }
                 )
                 
                 column_count = col_result[0].column_count if col_result else 0
@@ -187,11 +377,71 @@ class LineageService(LoggerMixin):
                     last_modified=row.last_modified,
                 ))
             
+            self.logger.info(f"Found {len(views)} views matching filters")
             return views
             
         except Exception as e:
             self.logger.error("Failed to get available views", error=str(e))
-            raise
+            # Fallback: try without database prefix (for current database context)
+            try:
+                self.logger.info("Trying fallback query without database prefix")
+                query = """
+                SELECT 
+                    TABLE_NAME as view_name,
+                    TABLE_SCHEMA as schema_name,
+                    TABLE_CATALOG as database_name,
+                    CREATED as created_date,
+                    LAST_ALTERED as last_modified
+                FROM INFORMATION_SCHEMA.VIEWS
+                WHERE TABLE_CATALOG = :database_filter
+                AND TABLE_SCHEMA = :schema_filter
+                ORDER BY TABLE_NAME
+                """
+                
+                if limit:
+                    query += f" LIMIT {limit}"
+                if offset:
+                    query += f" OFFSET {offset}"
+                
+                results = self.db_manager.execute_query(query, params)
+                
+                views = []
+                for row in results:
+                    # Get column count for each view
+                    col_count_query = """
+                    SELECT COUNT(*) as column_count
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_CATALOG = :database_name
+                    AND TABLE_SCHEMA = :schema_name
+                    AND TABLE_NAME = :view_name
+                    """
+                    
+                    col_result = self.db_manager.execute_query(
+                        col_count_query,
+                        {
+                            "database_name": row.database_name,
+                            "schema_name": row.schema_name, 
+                            "view_name": row.view_name
+                        }
+                    )
+                    
+                    column_count = col_result[0].column_count if col_result else 0
+                    
+                    views.append(ViewInfo(
+                        view_name=row.view_name,
+                        schema_name=row.schema_name,
+                        database_name=row.database_name,
+                        column_count=column_count,
+                        created_date=row.created_date,
+                        last_modified=row.last_modified,
+                    ))
+                
+                self.logger.info(f"Found {len(views)} views matching filters (fallback)")
+                return views
+                
+            except Exception as fallback_error:
+                self.logger.error("Fallback query also failed", error=str(fallback_error))
+                raise
     
     async def export_results(
         self,
@@ -213,40 +463,108 @@ class LineageService(LoggerMixin):
     
     async def _discover_views(
         self,
-        schema_filter: Optional[str] = None,
+        database_filter: str,
+        schema_filter: str,
         include_system_views: bool = False,
         max_views: Optional[int] = None,
     ) -> List[ViewInfo]:
         """Discover views from database."""
-        query = """
-        SELECT TABLE_NAME
-        FROM INFORMATION_SCHEMA.VIEWS
-        WHERE TABLE_CATALOG = CURRENT_DATABASE()
+        self.logger.info(
+            "Discovering views",
+            database_filter=database_filter,
+            schema_filter=schema_filter,
+            include_system_views=include_system_views,
+            max_views=max_views
+        )
+        
+        query = f"""
+        SELECT 
+            TABLE_NAME as view_name,
+            TABLE_SCHEMA as schema_name,
+            TABLE_CATALOG as database_name
+        FROM {database_filter}.INFORMATION_SCHEMA.VIEWS
+        WHERE TABLE_CATALOG = :database_filter
+        AND TABLE_SCHEMA = :schema_filter
         """
+        
+        params = {
+            "database_filter": database_filter,
+            "schema_filter": schema_filter
+        }
         
         if not include_system_views:
             query += " AND TABLE_NAME NOT LIKE 'CANVAS_%'"
-        
-        if schema_filter:
-            query += f" AND TABLE_SCHEMA = '{schema_filter}'"
         
         query += " ORDER BY TABLE_NAME"
         
         if max_views:
             query += f" LIMIT {max_views}"
         
-        results = self.db_manager.execute_query(query)
+        self.logger.info("Executing view discovery query", query=query, params=params)
         
-        views = []
-        for row in results:
-            views.append(ViewInfo(
-                view_name=row.TABLE_NAME,
-                schema_name=schema_filter or "UNKNOWN",
-                database_name="CURRENT",
-                column_count=0,  # Will be populated later if needed
-            ))
-        
-        return views
+        try:
+            results = self.db_manager.execute_query(query, params)
+            self.logger.info(f"View discovery query returned {len(results)} results")
+            
+            views = []
+            for i, row in enumerate(results):
+                self.logger.debug(f"Processing row {i}: {row}")
+                
+                # Handle different column name cases
+                view_name = None
+                schema_name = None
+                database_name = None
+                
+                # Try different attribute access methods
+                for attr in ['view_name', 'TABLE_NAME']:
+                    try:
+                        view_name = getattr(row, attr, None)
+                        if view_name:
+                            break
+                    except AttributeError:
+                        continue
+                
+                for attr in ['schema_name', 'TABLE_SCHEMA']:
+                    try:
+                        schema_name = getattr(row, attr, None)
+                        if schema_name:
+                            break
+                    except AttributeError:
+                        continue
+                
+                for attr in ['database_name', 'TABLE_CATALOG']:
+                    try:
+                        database_name = getattr(row, attr, None)
+                        if database_name:
+                            break
+                    except AttributeError:
+                        continue
+                
+                # Fallback to index access
+                if not view_name:
+                    try:
+                        view_name = row[0]
+                    except (IndexError, TypeError):
+                        pass
+                
+                if view_name:
+                    view_info = ViewInfo(
+                        view_name=view_name,
+                        schema_name=schema_name or schema_filter,
+                        database_name=database_name or database_filter,
+                        column_count=0,  # Will be populated later if needed
+                    )
+                    views.append(view_info)
+                    self.logger.debug(f"Added view: {view_name}")
+                else:
+                    self.logger.warning(f"Could not extract view name from row {i}")
+            
+            self.logger.info(f"Discovered {len(views)} views")
+            return views
+            
+        except Exception as e:
+            self.logger.error("Failed to discover views", error=str(e))
+            raise
     
     async def _get_specific_views(self, view_names: List[str]) -> List[ViewInfo]:
         """Get specific views by name."""
@@ -260,30 +578,64 @@ class LineageService(LoggerMixin):
             ))
         return views
     
-    async def _get_view_ddl(self, view_name: str) -> Optional[str]:
+    async def _get_view_ddl(self, view_name: str, database_name: str = None, schema_name: str = None) -> Optional[str]:
         """Get DDL for a specific view."""
         try:
-            # Try with schema qualification first
-            schemas_to_try = ["CPS_DSCI_API", "CPS_DSCI_BR"]
+            self.logger.info("Getting DDL for view", view_name=view_name, database_name=database_name, schema_name=schema_name)
             
-            for schema in schemas_to_try:
+            # Try with full qualification first if we have database and schema
+            if database_name and schema_name:
                 try:
-                    qualified_name = f"{schema}.{view_name}"
+                    qualified_name = f"{database_name}.{schema_name}.{view_name}"
                     query = f"SELECT GET_DDL('VIEW', '{qualified_name}') as ddl"
+                    self.logger.debug("Trying fully qualified DDL query", query=query)
                     result = self.db_manager.execute_query(query)
                     
-                    if result and result[0].ddl:
-                        return result[0].ddl
-                except Exception:
-                    continue
+                    if result and len(result) > 0:
+                        ddl = getattr(result[0], 'ddl', result[0][0] if len(result[0]) > 0 else None)
+                        if ddl:
+                            self.logger.info("Successfully retrieved DDL with full qualification")
+                            return ddl
+                except Exception as e:
+                    self.logger.warning("Failed to get DDL with full qualification", error=str(e))
+            
+            # Try with schema qualification only
+            if schema_name:
+                try:
+                    qualified_name = f"{schema_name}.{view_name}"
+                    query = f"SELECT GET_DDL('VIEW', '{qualified_name}') as ddl"
+                    self.logger.debug("Trying schema qualified DDL query", query=query)
+                    result = self.db_manager.execute_query(query)
+                    
+                    if result and len(result) > 0:
+                        ddl = getattr(result[0], 'ddl', result[0][0] if len(result[0]) > 0 else None)
+                        if ddl:
+                            self.logger.info("Successfully retrieved DDL with schema qualification")
+                            return ddl
+                except Exception as e:
+                    self.logger.warning("Failed to get DDL with schema qualification", error=str(e))
             
             # Try without schema qualification
-            query = f"SELECT GET_DDL('VIEW', '{view_name}') as ddl"
-            result = self.db_manager.execute_query(query)
+            try:
+                query = f"SELECT GET_DDL('VIEW', '{view_name}') as ddl"
+                self.logger.debug("Trying unqualified DDL query", query=query)
+                result = self.db_manager.execute_query(query)
+                
+                if result and len(result) > 0:
+                    ddl = getattr(result[0], 'ddl', result[0][0] if len(result[0]) > 0 else None)
+                    if ddl:
+                        self.logger.info("Successfully retrieved DDL without qualification")
+                        return ddl
+            except Exception as e:
+                self.logger.warning("Failed to get DDL without qualification", error=str(e))
             
-            if result and result[0].ddl:
-                return result[0].ddl
-            
+            # If all attempts failed, log and return None
+            self.logger.error(
+                "Could not retrieve DDL for view after all attempts", 
+                view_name=view_name,
+                database_name=database_name,
+                schema_name=schema_name
+            )
             return None
             
         except Exception as e:

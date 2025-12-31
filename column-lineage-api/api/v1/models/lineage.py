@@ -93,9 +93,11 @@ class LineageAnalysisRequest(BaseModel):
         default=None, 
         description="Specific view names to analyze. If None, analyze all views"
     )
-    schema_filter: Optional[str] = Field(
-        default=None, 
-        description="Filter views by schema"
+    database_filter: str = Field(
+        description="Database name to filter views (required)"
+    )
+    schema_filter: str = Field(
+        description="Schema name to filter views (required)"
     )
     include_system_views: bool = Field(
         default=False, 

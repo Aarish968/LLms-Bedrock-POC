@@ -25,10 +25,18 @@ class JobManager(LoggerMixin):
         """Create a new job."""
         self.logger.info("Creating new job", job_id=str(job.job_id))
         self._jobs[job.job_id] = job
+        self.logger.debug("Job stored successfully", job_id=str(job.job_id), total_jobs=len(self._jobs))
         return job
     
     def get_job(self, job_id: UUID) -> Optional[LineageAnalysisJob]:
         """Get job by ID."""
+        # Handle both UUID and string inputs
+        if isinstance(job_id, str):
+            try:
+                job_id = UUID(job_id)
+            except ValueError:
+                self.logger.error("Invalid job ID format", job_id=job_id)
+                return None
         return self._jobs.get(job_id)
     
     def update_job_status(
@@ -41,9 +49,18 @@ class JobManager(LoggerMixin):
         results_count: Optional[int] = None,
     ) -> None:
         """Update job status."""
+        # Handle both UUID and string inputs
+        if isinstance(job_id, str):
+            try:
+                job_id = UUID(job_id)
+            except ValueError:
+                self.logger.error("Invalid job ID format for status update", job_id=job_id)
+                return
+                
         job = self._jobs.get(job_id)
         if not job:
             self.logger.error("Job not found for status update", job_id=str(job_id))
+            self.logger.debug("Available jobs", job_ids=[str(jid) for jid in self._jobs.keys()])
             return
         
         job.status = JobStatus(status)
@@ -73,9 +90,18 @@ class JobManager(LoggerMixin):
         failed_views: Optional[int] = None,
     ) -> None:
         """Update job progress."""
+        # Handle both UUID and string inputs
+        if isinstance(job_id, str):
+            try:
+                job_id = UUID(job_id)
+            except ValueError:
+                self.logger.error("Invalid job ID format for progress update", job_id=job_id)
+                return
+                
         job = self._jobs.get(job_id)
         if not job:
             self.logger.error("Job not found for progress update", job_id=str(job_id))
+            self.logger.debug("Available jobs", job_ids=[str(jid) for jid in self._jobs.keys()])
             return
         
         if total_views is not None:
@@ -100,6 +126,14 @@ class JobManager(LoggerMixin):
         results: List[ColumnLineageResult]
     ) -> None:
         """Store job results."""
+        # Handle both UUID and string inputs
+        if isinstance(job_id, str):
+            try:
+                job_id = UUID(job_id)
+            except ValueError:
+                self.logger.error("Invalid job ID format for storing results", job_id=job_id)
+                return
+                
         self.logger.info(
             "Storing job results",
             job_id=str(job_id),
@@ -114,6 +148,14 @@ class JobManager(LoggerMixin):
         offset: int = 0,
     ) -> List[ColumnLineageResult]:
         """Get job results with pagination."""
+        # Handle both UUID and string inputs
+        if isinstance(job_id, str):
+            try:
+                job_id = UUID(job_id)
+            except ValueError:
+                self.logger.error("Invalid job ID format for getting results", job_id=job_id)
+                return []
+                
         results = self._job_results.get(job_id, [])
         
         if limit is not None:
@@ -124,6 +166,14 @@ class JobManager(LoggerMixin):
     
     def get_job_summary(self, job_id: UUID) -> Dict[str, Any]:
         """Get job summary statistics."""
+        # Handle both UUID and string inputs
+        if isinstance(job_id, str):
+            try:
+                job_id = UUID(job_id)
+            except ValueError:
+                self.logger.error("Invalid job ID format for getting summary", job_id=job_id)
+                return {}
+                
         job = self._jobs.get(job_id)
         results = self._job_results.get(job_id, [])
         

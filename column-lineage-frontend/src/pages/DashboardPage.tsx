@@ -9,16 +9,20 @@ import {
   Grid,
   InputAdornment,
   Chip,
+  Tabs,
+  Tab,
 } from '@mui/material'
-import { Search, PlayArrow, Person } from '@mui/icons-material'
+import { Search, PlayArrow, Person, Work, Analytics } from '@mui/icons-material'
 
 import ColumnLineageTable from '../components/ColumnLineageTable/ColumnLineageTable'
 import LineageAnalysisDialog from '../components/LineageAnalysis/LineageAnalysisDialog'
+import JobsDashboard from '../components/LineageAnalysis/JobsDashboard'
 import useUserContext from '@/hooks/users/useUserContext'
 
 const DashboardPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false)
+  const [currentTab, setCurrentTab] = useState(0)
   const user = useUserContext()
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,6 +35,10 @@ const DashboardPage = () => {
 
   const handleCloseAnalysisDialog = () => {
     setAnalysisDialogOpen(false)
+  }
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setCurrentTab(newValue)
   }
 
   return (
@@ -113,10 +121,48 @@ const DashboardPage = () => {
         </Grid>
       </Grid>
 
-      {/* Column Lineage Table */}
+      {/* Main Content Tabs */}
       <Card>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <Tabs value={currentTab} onChange={handleTabChange}>
+            <Tab 
+              icon={<Analytics />} 
+              label="Column Lineage" 
+              iconPosition="start"
+            />
+            <Tab 
+              icon={<Work />} 
+              label="Analysis Jobs" 
+              iconPosition="start"
+            />
+          </Tabs>
+        </Box>
+
         <CardContent>
-          <ColumnLineageTable searchQuery={searchQuery} />
+          {currentTab === 0 && (
+            <Box>
+              {/* Search Box for Column Lineage */}
+              <TextField
+                fullWidth
+                placeholder="Search views, tables, or columns..."
+                value={searchQuery}
+                onChange={handleSearch}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ mb: 3 }}
+              />
+              <ColumnLineageTable searchQuery={searchQuery} />
+            </Box>
+          )}
+
+          {currentTab === 1 && (
+            <JobsDashboard onNewAnalysis={handleStartAnalysis} />
+          )}
         </CardContent>
       </Card>
 

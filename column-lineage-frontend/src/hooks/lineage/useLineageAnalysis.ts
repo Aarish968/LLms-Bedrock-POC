@@ -18,8 +18,13 @@ export const useStartLineageAnalysis = () => {
 export const useJobStatus = (jobId: string | null, enabled: boolean = true) => {
   return useQuery({
     queryKey: ['lineage-job-status', jobId],
-    queryFn: () => lineageService.getJobStatus(jobId!),
-    enabled: enabled && !!jobId,
+    queryFn: () => {
+      if (!jobId) {
+        throw new Error('Job ID is required');
+      }
+      return lineageService.getJobStatus(jobId);
+    },
+    enabled: enabled && !!jobId && jobId !== 'null',
     refetchInterval: (data) => {
       // Refetch every 2 seconds if job is still running
       if (data?.status === 'PENDING' || data?.status === 'RUNNING') {
@@ -33,16 +38,13 @@ export const useJobStatus = (jobId: string | null, enabled: boolean = true) => {
 export const useLineageResults = (jobId: string | null, enabled: boolean = false) => {
   return useQuery({
     queryKey: ['lineage-results', jobId],
-    queryFn: () => lineageService.getResults(jobId!),
-    enabled: enabled && !!jobId,
-  });
-};
-
-export const useAvailableViews = (schemaFilter?: string) => {
-  return useQuery({
-    queryKey: ['available-views', schemaFilter],
-    queryFn: () => lineageService.getAvailableViews(schemaFilter),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    queryFn: () => {
+      if (!jobId) {
+        throw new Error('Job ID is required');
+      }
+      return lineageService.getResults(jobId);
+    },
+    enabled: enabled && !!jobId && jobId !== 'null',
   });
 };
 

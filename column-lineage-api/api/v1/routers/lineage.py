@@ -54,11 +54,14 @@ async def start_lineage_analysis(
             request_params=request.model_dump(),
         )
         
+        logger.info("Created job", job_id=str(job.job_id), request_params=request.model_dump())
+        
         # Store job
         job_manager.create_job(job)
         
         if request.async_processing:
             # Start background processing
+            logger.info("Starting background task", job_id=str(job.job_id))
             background_tasks.add_task(
                 lineage_service.process_lineage_analysis,
                 job.job_id,
@@ -74,16 +77,32 @@ async def start_lineage_analysis(
             )
         else:
             # Synchronous processing
-            results = await lineage_service.process_lineage_analysis(
-                job.job_id, request, current_user.id
-            )
-            
-            return LineageAnalysisResponse(
-                job_id=job.job_id,
-                status=JobStatus.COMPLETED,
-                message="Analysis completed successfully.",
-                results_url=f"/api/v1/lineage/results/{job.job_id}",
-            )
+            logger.info("Starting synchronous processing", job_id=str(job.job_id))
+            try:
+                results = await lineage_service.process_lineage_analysis(
+                    job.job_id, request, current_user.id
+                )
+                
+                # Get the updated job to return the correct status
+                updated_job = job_manager.get_job(job.job_id)
+                final_status = updated_job.status if updated_job else JobStatus.COMPLETED
+                
+                return LineageAnalysisResponse(
+                    job_id=job.job_id,
+                    status=final_status,
+                    message="Analysis completed successfully.",
+                    results_url=f"/api/v1/lineage/results/{job.job_id}",
+                )
+            except Exception as sync_error:
+                logger.error("Synchronous processing failed", job_id=str(job.job_id), error=str(sync_error))
+                # Update job status to failed
+                job_manager.update_job_status(
+                    job.job_id,
+                    "FAILED",
+                    completed_at=datetime.utcnow(),
+                    error_message=str(sync_error),
+                )
+                raise
             
     except Exception as e:
         logger.error("Failed to start lineage analysis", error=str(e), user_id=current_user.id)
@@ -160,18 +179,107 @@ async def get_lineage_results(
         )
 
 
+@router.get("/databases", response_model=List[str])
+async def list_available_databases(
+    current_user: User = Depends(get_current_active_user),
+):
+    """List available databases."""
+    logger.info("Listing available databases", user_id=current_user.id)
+    
+    try:
+        databases = await lineage_service.get_available_databases()
+        return databases
+        
+    except Exception as e:
+        logger.error("Failed to list databases", error=str(e), user_id=current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve databases: {str(e)}",
+        )
+
+
+@router.get("/schemas", response_model=List[str])
+async def list_available_schemas(
+    database_filter: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """List available schemas for a specific database."""
+    logger.info(
+        "Listing available schemas", 
+        database_filter=database_filter,
+        user_id=current_user.id
+    )
+    
+    try:
+        schemas = await lineage_service.get_available_schemas(database_filter)
+        return schemas
+        
+    except Exception as e:
+        logger.error("Failed to list schemas", error=str(e), user_id=current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve schemas: {str(e)}",
+        )
+
+
+@router.get("/public/databases", response_model=List[str])
+async def list_available_databases_public():
+    """List available databases (public endpoint for testing)."""
+    logger.info("Listing available databases (public)")
+    
+    try:
+        databases = await lineage_service.get_available_databases()
+        return databases
+        
+    except Exception as e:
+        logger.error("Failed to list databases", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve databases: {str(e)}",
+        )
+
+
+@router.get("/public/schemas", response_model=List[str])
+async def list_available_schemas_public(
+    database_filter: str,
+):
+    """List available schemas for a specific database (public endpoint for testing)."""
+    logger.info("Listing available schemas (public)", database_filter=database_filter)
+    
+    try:
+        schemas = await lineage_service.get_available_schemas(database_filter)
+        return schemas
+        
+    except Exception as e:
+        logger.error("Failed to list schemas", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve schemas: {str(e)}",
+        )
+
+
 @router.get("/views", response_model=List[ViewInfo])
 async def list_available_views(
-    schema_filter: Optional[str] = None,
+    schema_filter: str,  # Made mandatory
+    database_filter: str,  # Added mandatory database filter
     limit: Optional[int] = 100,
     offset: int = 0,
     current_user: User = Depends(get_current_active_user),
 ):
-    """List available database views."""
+    """
+    List available database views with mandatory schema and database filters.
+    
+    Parameters:
+    - schema_filter: Schema name to filter views (required)
+    - database_filter: Database name to filter views (required)
+    - limit: Maximum number of views to return (default: 100)
+    - offset: Number of views to skip for pagination (default: 0)
+    """
     logger.info(
         "Listing available views",
         user_id=current_user.id,
         schema_filter=schema_filter,
+        database_filter=database_filter,
         limit=limit,
         offset=offset,
     )
@@ -179,6 +287,7 @@ async def list_available_views(
     try:
         views = await lineage_service.get_available_views(
             schema_filter=schema_filter,
+            database_filter=database_filter,
             limit=limit,
             offset=offset,
         )
@@ -194,14 +303,24 @@ async def list_available_views(
 
 @router.get("/public/views", response_model=List[ViewInfo])
 async def list_available_views_public(
-    schema_filter: Optional[str] = None,
+    schema_filter: str,  # Made mandatory
+    database_filter: str,  # Added mandatory database filter
     limit: Optional[int] = 100,
     offset: int = 0,
 ):
-    """List available database views (public endpoint for testing)."""
+    """
+    List available database views (public endpoint for testing) with mandatory filters.
+    
+    Parameters:
+    - schema_filter: Schema name to filter views (required)
+    - database_filter: Database name to filter views (required)
+    - limit: Maximum number of views to return (default: 100)
+    - offset: Number of views to skip for pagination (default: 0)
+    """
     logger.info(
         "Listing available views (public)",
         schema_filter=schema_filter,
+        database_filter=database_filter,
         limit=limit,
         offset=offset,
     )
@@ -209,6 +328,7 @@ async def list_available_views_public(
     try:
         views = await lineage_service.get_available_views(
             schema_filter=schema_filter,
+            database_filter=database_filter,
             limit=limit,
             offset=offset,
         )
