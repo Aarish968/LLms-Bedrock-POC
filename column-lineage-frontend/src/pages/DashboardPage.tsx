@@ -123,7 +123,7 @@ const DashboardPage = () => {
 
       {/* Main Content Tabs */}
       <Card>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        {/* <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={currentTab} onChange={handleTabChange}>
             <Tab 
               icon={<Analytics />} 
@@ -136,7 +136,7 @@ const DashboardPage = () => {
               iconPosition="start"
             />
           </Tabs>
-        </Box>
+        </Box> */}
 
         <CardContent>
           {currentTab === 0 && (

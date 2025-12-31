@@ -133,7 +133,7 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
               disabled={isAnalysisRunning}
             />
 
-            <Box sx={{ mb: 2 }}>
+            {/* <Box sx={{ mb: 2 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -146,9 +146,9 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
               <Typography variant="caption" display="block" color="text.secondary">
                 Run analysis in background (recommended for large datasets)
               </Typography>
-            </Box>
+            </Box> */}
 
-            <Box sx={{ mb: 3 }}>
+            {/* <Box sx={{ mb: 3 }}>
               <FormControlLabel
                 control={
                   <Switch
@@ -161,7 +161,7 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
               <Typography variant="caption" display="block" color="text.secondary">
                 Include additional metadata in analysis results
               </Typography>
-            </Box>
+            </Box> */}
 
             {/* Available Views Preview */}
             {selectedDatabase && selectedSchema && (
