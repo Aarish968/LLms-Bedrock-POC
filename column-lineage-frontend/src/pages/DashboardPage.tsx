@@ -142,7 +142,7 @@ const DashboardPage = () => {
           {currentTab === 0 && (
             <Box>
               {/* Search Box for Column Lineage */}
-              <TextField
+              {/* <TextField
                 fullWidth
                 placeholder="Search views, tables, or columns..."
                 value={searchQuery}
@@ -155,7 +155,7 @@ const DashboardPage = () => {
                   ),
                 }}
                 sx={{ mb: 3 }}
-              />
+              /> */}
               <ColumnLineageTable searchQuery={searchQuery} />
             </Box>
           )}
