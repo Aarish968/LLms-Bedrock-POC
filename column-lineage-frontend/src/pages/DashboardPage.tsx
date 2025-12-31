@@ -13,10 +13,12 @@ import {
 import { Search, PlayArrow, Person } from '@mui/icons-material'
 
 import ColumnLineageTable from '../components/ColumnLineageTable/ColumnLineageTable'
+import LineageAnalysisDialog from '../components/LineageAnalysis/LineageAnalysisDialog'
 import useUserContext from '@/hooks/users/useUserContext'
 
 const DashboardPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
+  const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false)
   const user = useUserContext()
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -24,8 +26,11 @@ const DashboardPage = () => {
   }
 
   const handleStartAnalysis = () => {
-    // TODO: Implement view to column lineage analysis
-    console.log('Starting view to column lineage analysis...')
+    setAnalysisDialogOpen(true)
+  }
+
+  const handleCloseAnalysisDialog = () => {
+    setAnalysisDialogOpen(false)
   }
 
   return (
@@ -114,6 +119,12 @@ const DashboardPage = () => {
           <ColumnLineageTable searchQuery={searchQuery} />
         </CardContent>
       </Card>
+
+      {/* Lineage Analysis Dialog */}
+      <LineageAnalysisDialog
+        open={analysisDialogOpen}
+        onClose={handleCloseAnalysisDialog}
+      />
     </Box>
   )
 }

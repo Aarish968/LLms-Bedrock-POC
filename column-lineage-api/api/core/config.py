@@ -56,8 +56,8 @@ class Settings(BaseSettings):
     
     # AWS Cognito (optional)
     COGNITO_USER_POOL_ID: str = Field(default="", description="Cognito user pool ID")
-    COGNITO_CLIENT_ID: str = Field(default="", description="Cognito client ID")
-    COGNITO_REGION: str = Field(default="us-east-1", description="Cognito region")
+    COGNITO_APP_CLIENT_ID: str = Field(default="", description="Cognito app client ID")
+    AWS_REGION: str = Field(default="us-east-1", description="AWS region")
     
     # Redis Configuration
     REDIS_URL: str = Field(default="redis://localhost:6379/0", description="Redis URL")

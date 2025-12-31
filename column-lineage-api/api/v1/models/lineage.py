@@ -111,6 +111,10 @@ class LineageAnalysisRequest(BaseModel):
         default=True, 
         description="Process asynchronously"
     )
+    include_metadata: bool = Field(
+        default=True, 
+        description="Include additional metadata in results"
+    )
 
 
 class LineageAnalysisJob(BaseModel):

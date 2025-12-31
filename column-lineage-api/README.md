@@ -22,9 +22,34 @@ This system automatically analyzes Snowflake database views and traces each colu
 
 ## Quick Start
 
-1. Install dependencies:
+### Option 1: Using UV (Recommended)
 ```bash
+# Install dependencies
 uv sync
+
+# Run development server
+uv run uvicorn api.main:app --reload
+```
+
+### Option 2: Using pip
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -e .
+
+# For development dependencies
+pip install -e .[dev]
+
+# Run development server
+python -m uvicorn api.main:app --reload
+```
+
+### Option 3: Using the install script
+```bash
+python install.py
 ```
 
 2. Set up environment variables:
@@ -33,12 +58,7 @@ cp .env.example .env
 # Edit .env with your configuration
 ```
 
-3. Run the development server:
-```bash
-uv run uvicorn api.main:app --reload
-```
-
-4. Access the API documentation:
+3. Access the API documentation:
 - OpenAPI docs: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 

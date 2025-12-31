@@ -30,14 +30,14 @@ def main():
             print("Installation cancelled.")
             return
     
-    # Install dependencies using pip
-    if not run_command("pip install -r requirements.txt", "Installing main dependencies"):
+    # Install dependencies using pip with pyproject.toml
+    if not run_command("pip install -e .", "Installing main dependencies"):
         return
     
     # Install development dependencies if requested
     response = input("Install development dependencies? (y/N): ")
     if response.lower() == 'y':
-        if not run_command("pip install -r requirements-dev.txt", "Installing development dependencies"):
+        if not run_command("pip install -e .[dev]", "Installing development dependencies"):
             return
     
     # Install pre-commit hooks if available

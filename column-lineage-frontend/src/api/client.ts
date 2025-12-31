@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
+import { Auth } from 'aws-amplify';
 
 // API configuration interface
 interface ApiConfig {
@@ -21,7 +22,7 @@ const apiClient: AxiosInstance = axios.create(defaultConfig);
 
 // Request interceptor
 apiClient.interceptors.request.use(
-  (config: AxiosRequestConfig) => {
+  async (config: AxiosRequestConfig) => {
     // Add timestamp to prevent caching
     if (config.params) {
       config.params._t = Date.now();
@@ -29,10 +30,18 @@ apiClient.interceptors.request.use(
       config.params = { _t: Date.now() };
     }
 
-    // Add auth token if available (for future use)
-    const token = localStorage.getItem('authToken');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Add Cognito JWT token if available
+    try {
+      const session = await Auth.currentSession();
+      const token = session.getIdToken().getJwtToken();
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      // User not authenticated - this is fine for public endpoints
+      if (import.meta.env.DEV) {
+        console.log('No auth session available:', error);
+      }
     }
 
     // Log request in development
@@ -67,7 +76,7 @@ apiClient.interceptors.response.use(
 
     return response;
   },
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     // Enhanced error handling
     const errorMessage = getErrorMessage(error);
     
@@ -80,9 +89,13 @@ apiClient.interceptors.response.use(
 
     // Handle specific error cases
     if (error.response?.status === 401) {
-      // Handle unauthorized - redirect to login or refresh token
-      localStorage.removeItem('authToken');
-      // You can dispatch a logout action here if using Redux/Context
+      // Handle unauthorized - redirect to login
+      try {
+        await Auth.signOut();
+        window.location.href = '/';
+      } catch (signOutError) {
+        console.error('Error signing out:', signOutError);
+      }
     }
 
     if (error.response?.status === 403) {
