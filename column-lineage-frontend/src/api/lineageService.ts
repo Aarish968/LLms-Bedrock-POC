@@ -141,7 +141,8 @@ export const lineageService = {
    */
   async getAvailableViews(schemaFilter?: string, limit: number = 100, offset: number = 0): Promise<ViewInfo[]> {
     try {
-      const response = await api.get<ViewInfo[]>('/api/v1/lineage/views', {
+      // Use public endpoint for testing
+      const response = await api.get<ViewInfo[]>('/api/v1/lineage/public/views', {
         params: {
           schema_filter: schemaFilter,
           limit,

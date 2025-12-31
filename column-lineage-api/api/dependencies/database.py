@@ -122,7 +122,8 @@ class DatabaseManager:
         
         try:
             with self.engine.connect() as conn:
-                result = conn.execute(query, params or {})
+                from sqlalchemy import text
+                result = conn.execute(text(query), params or {})
                 return result.fetchall()
         except Exception as e:
             self.logger.error("Query execution failed", query=query, error=str(e))

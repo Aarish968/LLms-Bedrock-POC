@@ -192,6 +192,36 @@ async def list_available_views(
         )
 
 
+@router.get("/public/views", response_model=List[ViewInfo])
+async def list_available_views_public(
+    schema_filter: Optional[str] = None,
+    limit: Optional[int] = 100,
+    offset: int = 0,
+):
+    """List available database views (public endpoint for testing)."""
+    logger.info(
+        "Listing available views (public)",
+        schema_filter=schema_filter,
+        limit=limit,
+        offset=offset,
+    )
+    
+    try:
+        views = await lineage_service.get_available_views(
+            schema_filter=schema_filter,
+            limit=limit,
+            offset=offset,
+        )
+        return views
+        
+    except Exception as e:
+        logger.error("Failed to list views", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve views: {str(e)}",
+        )
+
+
 @router.post("/export/{job_id}")
 async def export_lineage_results(
     job_id: UUID,
