@@ -126,7 +126,7 @@ class DatabaseManager:
                 result = conn.execute(text(query), params or {})
                 
                 # Commit the transaction for DDL and DML statements
-                if any(keyword in query.upper().strip() for keyword in ['CREATE', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER']):
+                if any(keyword in query.upper().strip() for keyword in ['CREATE', 'INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'TRUNCATE']):
                     conn.commit()
                 
                 return result.fetchall()

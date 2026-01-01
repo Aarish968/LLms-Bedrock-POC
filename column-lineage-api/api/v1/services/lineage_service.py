@@ -916,7 +916,7 @@ class LineageService(LoggerMixin):
             await self._create_lineage_results_table(database_name, schema_name, table_name)
             
             # Insert results into table
-            await self._insert_lineage_results(results, database_name, schema_name, table_name, job_id)
+            await self._insert_lineage_results(results, database_name, schema_name, table_name)
             
             self.logger.info(
                 "Results auto-saved to database successfully", 
@@ -936,7 +936,6 @@ class LineageService(LoggerMixin):
             
             create_table_sql = f"""
             CREATE TABLE IF NOT EXISTS {full_table_name} (
-                JOB_ID VARCHAR(36) NOT NULL,
                 VIEW_NAME VARCHAR(255) NOT NULL,
                 VIEW_COLUMN VARCHAR(255) NOT NULL,
                 COLUMN_TYPE VARCHAR(50) NOT NULL,
@@ -962,12 +961,23 @@ class LineageService(LoggerMixin):
         results: List[ColumnLineageResult], 
         database_name: str, 
         schema_name: str, 
-        table_name: str,
-        job_id: UUID
+        table_name: str
     ) -> None:
         """Insert lineage results into the database table."""
         try:
             full_table_name = f"{database_name}.{schema_name}.{table_name}"
+            
+            # Truncate table before inserting new results
+            self.logger.info("Truncating lineage results table before insert", table_name=full_table_name)
+            truncate_sql = f"TRUNCATE TABLE {full_table_name}"
+            
+            # Execute truncate with explicit transaction handling
+            try:
+                self.db_manager.execute_query(truncate_sql)
+                self.logger.info("Table truncated successfully", table_name=full_table_name)
+            except Exception as truncate_error:
+                self.logger.error("Failed to truncate table", table_name=full_table_name, error=str(truncate_error))
+                raise
             
             # Prepare batch insert data
             insert_data = []
@@ -991,14 +1001,16 @@ class LineageService(LoggerMixin):
                 
                 # Build VALUES clause for batch insert
                 values_clauses = []
+                current_timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+                
                 for row in batch:
                     expression_type = f"'{row['expression_type']}'" if row['expression_type'] else "NULL"
-                    values_clause = f"('{row['job_id']}', '{row['view_name']}', '{row['view_column']}', '{row['column_type']}', '{row['source_table']}', '{row['source_column']}', {expression_type}, CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP())"
+                    values_clause = f"('{row['view_name']}', '{row['view_column']}', '{row['column_type']}', '{row['source_table']}', '{row['source_column']}', {expression_type}, '{current_timestamp}', '{current_timestamp}')"
                     values_clauses.append(values_clause)
                 
                 insert_sql = f"""
                 INSERT INTO {full_table_name} 
-                (JOB_ID, VIEW_NAME, VIEW_COLUMN, COLUMN_TYPE, SOURCE_TABLE, SOURCE_COLUMN, EXPRESSION_TYPE, ANALYSIS_TIMESTAMP, CREATED_AT)
+                (VIEW_NAME, VIEW_COLUMN, COLUMN_TYPE, SOURCE_TABLE, SOURCE_COLUMN, EXPRESSION_TYPE, ANALYSIS_TIMESTAMP, CREATED_AT)
                 VALUES {', '.join(values_clauses)}
                 """
                 
