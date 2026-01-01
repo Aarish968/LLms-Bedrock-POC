@@ -70,7 +70,7 @@ const DashboardPage = () => {
       {/* Controls Section */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {/* Search Box */}
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12}>
           <Card>
             <CardContent>
               <TextField
@@ -89,32 +89,6 @@ const DashboardPage = () => {
               />
               <Typography variant="caption" color="text.secondary">
                 Search functionality will be implemented later
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Start Analysis Button */}
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent sx={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: '100%'
-            }}>
-              <Button
-                variant="contained"
-                size="large"
-                startIcon={<PlayArrow />}
-                onClick={handleStartAnalysis}
-                sx={{ mb: 1 }}
-              >
-                Start View to Column Lineage
-              </Button>
-              <Typography variant="caption" color="text.secondary" align="center">
-                Analyze database view dependencies
               </Typography>
             </CardContent>
           </Card>
@@ -157,6 +131,30 @@ const DashboardPage = () => {
                 sx={{ mb: 3 }}
               /> */}
               <ColumnLineageTable searchQuery={searchQuery} />
+              
+              {/* Start Analysis Button - Moved after table */}
+              <Box sx={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center',
+                mt: 3,
+                p: 2
+              }}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<PlayArrow />}
+                    onClick={handleStartAnalysis}
+                    sx={{ mb: 1 }}
+                  >
+                    Start View to Column Lineage
+                  </Button>
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    Analyze database view dependencies
+                  </Typography>
+                </Box>
+              </Box>
             </Box>
           )}
 

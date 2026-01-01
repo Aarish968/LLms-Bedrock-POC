@@ -157,7 +157,7 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
         gap: 2
       }}>
         <Typography variant="h6" component="h2">
-          Source Column and Table Mapping
+          DC Base Tables
         </Typography>
         
         <Stack direction="row" spacing={2} alignItems="center">
