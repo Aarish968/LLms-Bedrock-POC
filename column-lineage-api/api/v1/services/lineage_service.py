@@ -110,7 +110,6 @@ class LineageService(LoggerMixin):
             
             # Auto-save results to database table in the same database and schema
             await self._auto_save_results_to_database(
-                job_id, 
                 results, 
                 request.database_filter, 
                 request.schema_filter
@@ -881,7 +880,6 @@ class LineageService(LoggerMixin):
     
     async def _auto_save_results_to_database(
         self, 
-        job_id: UUID, 
         results: List[ColumnLineageResult], 
         database_name: str, 
         schema_name: str
@@ -894,11 +892,11 @@ class LineageService(LoggerMixin):
             
             # Check if database auto-save is enabled
             if not settings.AUTO_SAVE_TO_DATABASE:
-                self.logger.debug("Auto-save to database disabled", job_id=str(job_id))
+                self.logger.debug("Auto-save to database disabled")
                 return
             
             if not results:
-                self.logger.info("No results to save to database", job_id=str(job_id))
+                self.logger.info("No results to save to database")
                 return
             
             # Table name for storing lineage results
@@ -907,7 +905,6 @@ class LineageService(LoggerMixin):
             
             self.logger.info(
                 "Auto-saving results to database table", 
-                job_id=str(job_id), 
                 table_name=full_table_name,
                 results_count=len(results)
             )
@@ -920,13 +917,12 @@ class LineageService(LoggerMixin):
             
             self.logger.info(
                 "Results auto-saved to database successfully", 
-                job_id=str(job_id), 
                 table_name=full_table_name,
                 results_count=len(results)
             )
             
         except Exception as e:
-            self.logger.error("Failed to auto-save results to database", job_id=str(job_id), error=str(e))
+            self.logger.error("Failed to auto-save results to database", error=str(e))
             # Don't raise the exception - auto-save failure shouldn't break the analysis
     
     async def _create_lineage_results_table(self, database_name: str, schema_name: str, table_name: str) -> None:
@@ -983,7 +979,6 @@ class LineageService(LoggerMixin):
             insert_data = []
             for result in results:
                 insert_data.append({
-                    'job_id': str(job_id),
                     'view_name': result.view_name,
                     'view_column': result.view_column,
                     'column_type': result.column_type.value,

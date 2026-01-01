@@ -43,6 +43,9 @@ class Settings:
     API_V1_PREFIX: str = os.getenv("API_V1_PREFIX", "/api/v1")
     RUN_ENV: str = os.getenv("RUN_ENV", "dev")
     
+    # Connection mode settings
+    POC: bool = os.getenv("POC", "true").lower() == "true"
+    
     # CORS settings
     CORS_ORIGINS: list = eval(os.getenv("CORS_ORIGINS", '["http://localhost:3000", "http://localhost:8080"]'))
     ALLOWED_HOSTS: list = eval(os.getenv("ALLOWED_HOSTS", '["localhost", "127.0.0.1"]'))
