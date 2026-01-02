@@ -167,6 +167,7 @@ debug_*.py
 *_debug.py
 *test*.py
 *debug*.py
+common/
 
 # Analysis results
 analysis_results/

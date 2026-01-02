@@ -804,7 +804,7 @@ class LineageService(LoggerMixin):
                 return
             
             # Table name for storing lineage results
-            table_name = "COLUMN_LINEAGE_RESULTS"
+            table_name = "VIEW_TO_SOURCE_COLUMN_LINEAGE"
             full_table_name = f"{database_name}.{schema_name}.{table_name}"
             
             self.logger.info(

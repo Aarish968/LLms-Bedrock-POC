@@ -927,7 +927,7 @@ async def get_database_results(
     )
     
     try:
-        table_name = "COLUMN_LINEAGE_RESULTS"
+        table_name = "VIEW_TO_SOURCE_COLUMN_LINEAGE"
         full_table_name = f"{database_name}.{schema_name}.{table_name}"
         
         # Build query with optional job_id filter
@@ -1016,7 +1016,7 @@ async def get_database_results_public(
     )
     
     try:
-        table_name = "COLUMN_LINEAGE_RESULTS"
+        table_name = "VIEW_TO_SOURCE_COLUMN_LINEAGE"
         full_table_name = f"{database_name}.{schema_name}.{table_name}"
         
         # Build query with optional job_id filter
