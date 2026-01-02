@@ -322,8 +322,6 @@ class LineageService(LoggerMixin):
         self,
         schema_filter: str,  # Made mandatory
         database_filter: str,  # Added mandatory database filter
-        limit: Optional[int] = 100,
-        offset: int = 0,
     ) -> List[ViewInfo]:
         """
         Get list of available database views with mandatory filters.
@@ -331,15 +329,11 @@ class LineageService(LoggerMixin):
         Parameters:
         - schema_filter: Schema name to filter views (required)
         - database_filter: Database name to filter views (required)
-        - limit: Maximum number of views to return (default: 100)
-        - offset: Number of views to skip for pagination (default: 0)
         """
         self.logger.info(
             "Getting available views", 
             schema_filter=schema_filter,
             database_filter=database_filter,
-            limit=limit,
-            offset=offset
         )
         
         try:
@@ -361,11 +355,6 @@ class LineageService(LoggerMixin):
                 "schema_filter": schema_filter,
                 "database_filter": database_filter
             }
-            
-            if limit:
-                query += f" LIMIT {limit}"
-            if offset:
-                query += f" OFFSET {offset}"
             
             results = self.db_manager.execute_query(query, params)
             
@@ -420,11 +409,6 @@ class LineageService(LoggerMixin):
                 AND TABLE_SCHEMA = :schema_filter
                 ORDER BY TABLE_NAME
                 """
-                
-                if limit:
-                    query += f" LIMIT {limit}"
-                if offset:
-                    query += f" OFFSET {offset}"
                 
                 results = self.db_manager.execute_query(query, params)
                 

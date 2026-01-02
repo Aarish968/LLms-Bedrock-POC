@@ -12,8 +12,6 @@ export interface BaseViewResponse {
 }
 
 export interface BaseViewParams {
-  limit?: number;
-  offset?: number;
   mock?: boolean;
 }
 
@@ -34,8 +32,6 @@ export const baseViewService = {
     try {
       const response = await api.get<BaseViewResponse>('/api/v1/lineage/public/base-view', {
         params: {
-          limit: params.limit || 100,
-          offset: params.offset || 0,
           ...(params.mock && { mock: params.mock }),
         },
       });

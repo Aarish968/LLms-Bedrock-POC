@@ -276,8 +276,6 @@ async def list_available_schemas_public(
 async def list_available_views(
     schema_filter: str,  # Made mandatory
     database_filter: str,  # Added mandatory database filter
-    limit: Optional[int] = 100,
-    offset: int = 0,
     current_user: User = Depends(get_current_active_user),
 ):
     """
@@ -286,24 +284,18 @@ async def list_available_views(
     Parameters:
     - schema_filter: Schema name to filter views (required)
     - database_filter: Database name to filter views (required)
-    - limit: Maximum number of views to return (default: 100)
-    - offset: Number of views to skip for pagination (default: 0)
     """
     logger.info(
         "Listing available views",
         user_id=current_user.id,
         schema_filter=schema_filter,
         database_filter=database_filter,
-        limit=limit,
-        offset=offset,
     )
     
     try:
         views = await lineage_service.get_available_views(
             schema_filter=schema_filter,
             database_filter=database_filter,
-            limit=limit,
-            offset=offset,
         )
         return views
         
@@ -319,8 +311,6 @@ async def list_available_views(
 async def list_available_views_public(
     schema_filter: str,  # Made mandatory
     database_filter: str,  # Added mandatory database filter
-    limit: Optional[int] = 100,
-    offset: int = 0,
 ):
     """
     List available database views (public endpoint for testing) with mandatory filters.
@@ -328,23 +318,17 @@ async def list_available_views_public(
     Parameters:
     - schema_filter: Schema name to filter views (required)
     - database_filter: Database name to filter views (required)
-    - limit: Maximum number of views to return (default: 100)
-    - offset: Number of views to skip for pagination (default: 0)
     """
     logger.info(
         "Listing available views (public)",
         schema_filter=schema_filter,
         database_filter=database_filter,
-        limit=limit,
-        offset=offset,
     )
     
     try:
         views = await lineage_service.get_available_views(
             schema_filter=schema_filter,
             database_filter=database_filter,
-            limit=limit,
-            offset=offset,
         )
         return views
         
@@ -498,8 +482,6 @@ async def list_jobs(
 
 @router.get("/public/base-view", response_model=BaseViewResponse)
 async def get_base_view_data(
-    limit: Optional[int] = 100,
-    offset: int = 0,
     mock: bool = False,  # Add mock parameter for testing
 ):
     """
@@ -510,14 +492,10 @@ async def get_base_view_data(
     with BASE_PRIMARY_ID and TABLE_NAME columns.
     
     Parameters:
-    - limit: Maximum number of records to return (default: 100)
-    - offset: Number of records to skip (default: 0)
     - mock: Force mock mode for testing (default: False)
     """
     logger.info(
         "Getting BASE_VIEW data",
-        limit=limit,
-        offset=offset,
         mock_mode=mock,
     )
     
@@ -549,24 +527,13 @@ async def get_base_view_data(
             count_result = connection.execute(count_query)
             total_records = count_result.fetchone()[0]
             
-            # Get paginated data - Snowflake uses LIMIT and OFFSET
-            if limit:
-                data_query = text(f"""
-                    SELECT BASE_PRIMARY_ID, TABLE_NAME 
-                    FROM {base_view_table} 
-                    ORDER BY BASE_PRIMARY_ID 
-                    LIMIT :limit OFFSET :offset
-                """)
-                result = connection.execute(data_query, {"limit": limit, "offset": offset})
-            else:
-                # If no limit specified, get all remaining records from offset
-                data_query = text(f"""
-                    SELECT BASE_PRIMARY_ID, TABLE_NAME 
-                    FROM {base_view_table} 
-                    ORDER BY BASE_PRIMARY_ID 
-                    OFFSET :offset
-                """)
-                result = connection.execute(data_query, {"offset": offset})
+            # Get all data - no pagination
+            data_query = text(f"""
+                SELECT BASE_PRIMARY_ID, TABLE_NAME 
+                FROM {base_view_table} 
+                ORDER BY BASE_PRIMARY_ID
+            """)
+            result = connection.execute(data_query)
             
             records = [
                 BaseViewRecord(base_primary_id=row[0], table_name=row[1])
