@@ -27,18 +27,24 @@ class Settings:
     SNOWFLAKE_WAREHOUSE: str = os.getenv("SNOWFLAKE_WAREHOUSE", "")
     SNOWFLAKE_ROLE: str = os.getenv("SNOWFLAKE_ROLE", "")
     
-    # JWT settings
-    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key")
-    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
-    JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
-    
     # Auto-save settings
     AUTO_SAVE_RESULTS: bool = os.getenv("AUTO_SAVE_RESULTS", "true").lower() == "true"
     AUTO_SAVE_TO_DATABASE: bool = os.getenv("AUTO_SAVE_TO_DATABASE", "true").lower() == "true"
     RESULTS_DIRECTORY: str = os.getenv("RESULTS_DIRECTORY", "analysis_results")
     
+    # Auto-save target configuration
+    AUTO_SAVE_TARGET_DATABASE: str = os.getenv("AUTO_SAVE_TARGET_DATABASE", "")
+    AUTO_SAVE_TARGET_SCHEMA: str = os.getenv("AUTO_SAVE_TARGET_SCHEMA", "")
+    AUTO_SAVE_TARGET_TABLE: str = os.getenv("AUTO_SAVE_TARGET_TABLE", "VIEW_TO_SOURCE_COLUMN_LINEAGE")
+    
+    # Auto-save override configuration
+    AUTO_SAVE_DATABASE_OVERRIDE: str = os.getenv("AUTO_SAVE_DATABASE_OVERRIDE", "")
+    AUTO_SAVE_SCHEMA_OVERRIDE: str = os.getenv("AUTO_SAVE_SCHEMA_OVERRIDE", "")
+    
     # Base View Table Configuration
     BASE_VIEW_TABLE: str = os.getenv("BASE_VIEW_TABLE", "PUBLIC.BASE_VIEW")
+    BASE_VIEW_SAFETY_LIMIT: int = int(os.getenv("BASE_VIEW_SAFETY_LIMIT", "10000"))
+    VIEWS_SAFETY_LIMIT: int = int(os.getenv("VIEWS_SAFETY_LIMIT", "1000"))
     
     # API settings
     PROJECT_NAME: str = os.getenv("PROJECT_NAME", "Column Lineage API")

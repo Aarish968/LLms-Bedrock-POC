@@ -20,7 +20,7 @@ from api.v1.models.lineage import (
 )
 from api.v1.services.job_manager import JobManager
 from api.core.analysis import process_all_views, save_results_to_csv, get_analysis_summary
-
+from api.core.config import get_settings
 
 class LineageService(LoggerMixin):
     """Column lineage analysis service."""
@@ -71,10 +71,13 @@ class LineageService(LoggerMixin):
             
             # Auto-save results to database table
             if request.database_filter and request.schema_filter:
+                settings = get_settings()
+                target_database = settings.AUTO_SAVE_TARGET_DATABASE or request.database_filter
+                target_schema = settings.AUTO_SAVE_TARGET_SCHEMA or request.schema_filter
                 await self._auto_save_results_to_database(
                     results, 
-                    request.database_filter, 
-                    request.schema_filter
+                    target_database, 
+                    target_schema
                 )
             
             # Update job completion
@@ -788,7 +791,7 @@ class LineageService(LoggerMixin):
                 return
             
             # Table name for storing lineage results
-            table_name = "VIEW_TO_SOURCE_COLUMN_LINEAGE"
+            table_name = settings.AUTO_SAVE_TARGET_TABLE
             full_table_name = f"{database_name}.{schema_name}.{table_name}"
             
             self.logger.info(
