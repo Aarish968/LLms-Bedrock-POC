@@ -51,8 +51,8 @@ export const useCreateBaseView = () => {
 export const useUpdateBaseView = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<BaseViewRecord, Error, { srNo: number; request: BaseViewUpdateRequest }>({
-    mutationFn: ({ srNo, request }) => baseViewService.updateBaseViewRecord(srNo, request),
+  return useMutation<BaseViewRecord, Error, { basePrimaryId: number; request: BaseViewUpdateRequest }>({
+    mutationFn: ({ basePrimaryId, request }) => baseViewService.updateBaseViewRecord(basePrimaryId, request),
     onSuccess: () => {
       // Invalidate and refetch base view data
       queryClient.invalidateQueries({ queryKey: [BASE_VIEW_QUERY_KEY] });
@@ -68,7 +68,7 @@ export const useDeleteBaseView = () => {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, number>({
-    mutationFn: (srNo: number) => baseViewService.deleteBaseViewRecord(srNo),
+    mutationFn: (basePrimaryId: number) => baseViewService.deleteBaseViewRecord(basePrimaryId),
     onSuccess: () => {
       // Invalidate and refetch base view data
       queryClient.invalidateQueries({ queryKey: [BASE_VIEW_QUERY_KEY] });

@@ -503,10 +503,11 @@ async def get_base_view_data(
     mock: bool = False,  # Add mock parameter for testing
 ):
     """
-    Public endpoint to retrieve data from Snowflake BASE_VIEW table.
+    Public endpoint to retrieve data from configurable BASE_VIEW table.
     
     This endpoint does not require authentication and can be accessed publicly.
-    Returns data from the PUBLIC.BASE_VIEW table with SR_NO and TABLE_NAME columns.
+    Returns data from the BASE_VIEW table configured in environment variables
+    with BASE_PRIMARY_ID and TABLE_NAME columns.
     
     Parameters:
     - limit: Maximum number of records to return (default: 100)
@@ -538,33 +539,37 @@ async def get_base_view_data(
         logger.info("Querying Snowflake database")
         with engine.connect() as connection:
             from sqlalchemy import text
+            from api.core.config import get_settings
+            
+            settings = get_settings()
+            base_view_table = settings.BASE_VIEW_TABLE
             
             # Count total records
-            count_query = text("SELECT COUNT(*) as total FROM PUBLIC.BASE_VIEW")
+            count_query = text(f"SELECT COUNT(*) as total FROM {base_view_table}")
             count_result = connection.execute(count_query)
             total_records = count_result.fetchone()[0]
             
             # Get paginated data - Snowflake uses LIMIT and OFFSET
             if limit:
-                data_query = text("""
-                    SELECT SR_NO, TABLE_NAME 
-                    FROM PUBLIC.BASE_VIEW 
-                    ORDER BY SR_NO 
+                data_query = text(f"""
+                    SELECT BASE_PRIMARY_ID, TABLE_NAME 
+                    FROM {base_view_table} 
+                    ORDER BY BASE_PRIMARY_ID 
                     LIMIT :limit OFFSET :offset
                 """)
                 result = connection.execute(data_query, {"limit": limit, "offset": offset})
             else:
                 # If no limit specified, get all remaining records from offset
-                data_query = text("""
-                    SELECT SR_NO, TABLE_NAME 
-                    FROM PUBLIC.BASE_VIEW 
-                    ORDER BY SR_NO 
+                data_query = text(f"""
+                    SELECT BASE_PRIMARY_ID, TABLE_NAME 
+                    FROM {base_view_table} 
+                    ORDER BY BASE_PRIMARY_ID 
                     OFFSET :offset
                 """)
                 result = connection.execute(data_query, {"offset": offset})
             
             records = [
-                BaseViewRecord(sr_no=row[0], table_name=row[1])
+                BaseViewRecord(base_primary_id=row[0], table_name=row[1])
                 for row in result.fetchall()
             ]
             
@@ -589,14 +594,14 @@ async def create_base_view_record(
     request: BaseViewCreateRequest,
 ):
     """
-    Create a new record in the BASE_VIEW table.
+    Create a new record in the configurable BASE_VIEW table.
     
     This endpoint does not require authentication and can be accessed publicly.
-    Creates a new record with the provided serial number and table name.
+    Creates a new record with the provided primary ID and table name.
     """
     logger.info(
         "Creating new BASE_VIEW record",
-        sr_no=request.sr_no,
+        base_primary_id=request.base_primary_id,
         table_name=request.table_name,
     )
     
@@ -615,38 +620,42 @@ async def create_base_view_record(
         # Insert new record into Snowflake database
         with engine.connect() as connection:
             from sqlalchemy import text
+            from api.core.config import get_settings
             
-            # Check if serial number already exists
-            check_query = text("SELECT COUNT(*) FROM PUBLIC.BASE_VIEW WHERE SR_NO = :sr_no")
-            check_result = connection.execute(check_query, {"sr_no": request.sr_no})
+            settings = get_settings()
+            base_view_table = settings.BASE_VIEW_TABLE
+            
+            # Check if primary ID already exists
+            check_query = text(f"SELECT COUNT(*) FROM {base_view_table} WHERE BASE_PRIMARY_ID = :base_primary_id")
+            check_result = connection.execute(check_query, {"base_primary_id": request.base_primary_id})
             exists = check_result.fetchone()[0] > 0
             
             if exists:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Record with serial number {request.sr_no} already exists",
+                    detail=f"Record with primary ID {request.base_primary_id} already exists",
                 )
             
             # Insert new record
-            insert_query = text("""
-                INSERT INTO PUBLIC.BASE_VIEW (SR_NO, TABLE_NAME) 
-                VALUES (:sr_no, :table_name)
+            insert_query = text(f"""
+                INSERT INTO {base_view_table} (BASE_PRIMARY_ID, TABLE_NAME) 
+                VALUES (:base_primary_id, :table_name)
             """)
             
             connection.execute(insert_query, {
-                "sr_no": request.sr_no,
+                "base_primary_id": request.base_primary_id,
                 "table_name": request.table_name
             })
             connection.commit()
             
             logger.info(
                 "BASE_VIEW record created successfully",
-                sr_no=request.sr_no,
+                base_primary_id=request.base_primary_id,
                 table_name=request.table_name,
             )
             
             return BaseViewRecord(
-                sr_no=request.sr_no,
+                base_primary_id=request.base_primary_id,
                 table_name=request.table_name
             )
             
@@ -661,20 +670,20 @@ async def create_base_view_record(
         )
 
 
-@router.put("/public/base-view/{sr_no}", response_model=BaseViewRecord)
+@router.put("/public/base-view/{base_primary_id}", response_model=BaseViewRecord)
 async def update_base_view_record(
-    sr_no: int,
+    base_primary_id: int,
     request: BaseViewUpdateRequest,
 ):
     """
-    Update an existing record in the BASE_VIEW table.
+    Update an existing record in the configurable BASE_VIEW table.
     
     This endpoint does not require authentication and can be accessed publicly.
-    Updates the table name for the record with the specified serial number.
+    Updates the table name for the record with the specified primary ID.
     """
     logger.info(
         "Updating BASE_VIEW record",
-        sr_no=sr_no,
+        base_primary_id=base_primary_id,
         new_table_name=request.table_name,
     )
     
@@ -693,27 +702,31 @@ async def update_base_view_record(
         # Update record in Snowflake database
         with engine.connect() as connection:
             from sqlalchemy import text
+            from api.core.config import get_settings
+            
+            settings = get_settings()
+            base_view_table = settings.BASE_VIEW_TABLE
             
             # Check if record exists
-            check_query = text("SELECT COUNT(*) FROM PUBLIC.BASE_VIEW WHERE SR_NO = :sr_no")
-            check_result = connection.execute(check_query, {"sr_no": sr_no})
+            check_query = text(f"SELECT COUNT(*) FROM {base_view_table} WHERE BASE_PRIMARY_ID = :base_primary_id")
+            check_result = connection.execute(check_query, {"base_primary_id": base_primary_id})
             exists = check_result.fetchone()[0] > 0
             
             if not exists:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Record with serial number {sr_no} not found",
+                    detail=f"Record with primary ID {base_primary_id} not found",
                 )
             
             # Update the record
-            update_query = text("""
-                UPDATE PUBLIC.BASE_VIEW 
+            update_query = text(f"""
+                UPDATE {base_view_table} 
                 SET TABLE_NAME = :table_name 
-                WHERE SR_NO = :sr_no
+                WHERE BASE_PRIMARY_ID = :base_primary_id
             """)
             
             result = connection.execute(update_query, {
-                "sr_no": sr_no,
+                "base_primary_id": base_primary_id,
                 "table_name": request.table_name
             })
             connection.commit()
@@ -721,17 +734,17 @@ async def update_base_view_record(
             if result.rowcount == 0:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Record with serial number {sr_no} not found",
+                    detail=f"Record with primary ID {base_primary_id} not found",
                 )
             
             logger.info(
                 "BASE_VIEW record updated successfully",
-                sr_no=sr_no,
+                base_primary_id=base_primary_id,
                 new_table_name=request.table_name,
             )
             
             return BaseViewRecord(
-                sr_no=sr_no,
+                base_primary_id=base_primary_id,
                 table_name=request.table_name
             )
             
@@ -746,17 +759,17 @@ async def update_base_view_record(
         )
 
 
-@router.delete("/public/base-view/{sr_no}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/public/base-view/{base_primary_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_base_view_record(
-    sr_no: int,
+    base_primary_id: int,
 ):
     """
-    Delete a record from the BASE_VIEW table.
+    Delete a record from the configurable BASE_VIEW table.
     
     This endpoint does not require authentication and can be accessed publicly.
-    Deletes the record with the specified serial number.
+    Deletes the record with the specified primary ID.
     """
-    logger.info("Deleting BASE_VIEW record", sr_no=sr_no)
+    logger.info("Deleting BASE_VIEW record", base_primary_id=base_primary_id)
     
     try:
         # Get database connection
@@ -773,19 +786,23 @@ async def delete_base_view_record(
         # Delete record from Snowflake database
         with engine.connect() as connection:
             from sqlalchemy import text
+            from api.core.config import get_settings
+            
+            settings = get_settings()
+            base_view_table = settings.BASE_VIEW_TABLE
             
             # Delete the record
-            delete_query = text("DELETE FROM PUBLIC.BASE_VIEW WHERE SR_NO = :sr_no")
-            result = connection.execute(delete_query, {"sr_no": sr_no})
+            delete_query = text(f"DELETE FROM {base_view_table} WHERE BASE_PRIMARY_ID = :base_primary_id")
+            result = connection.execute(delete_query, {"base_primary_id": base_primary_id})
             connection.commit()
             
             if result.rowcount == 0:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Record with serial number {sr_no} not found",
+                    detail=f"Record with primary ID {base_primary_id} not found",
                 )
             
-            logger.info("BASE_VIEW record deleted successfully", sr_no=sr_no)
+            logger.info("BASE_VIEW record deleted successfully", base_primary_id=base_primary_id)
             
     except HTTPException:
         # Re-raise HTTP exceptions

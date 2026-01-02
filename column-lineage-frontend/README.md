@@ -1,6 +1,6 @@
-# Column Analysis Frontend
+# Lineage Analysis Frontend
 
-A React-based frontend application for Database View Column Lineage Analysis System with AWS Amplify authentication.
+A React-based frontend application for Database Lineage Analysis System with AWS Amplify authentication.
 
 ## Features
 
@@ -95,7 +95,7 @@ Required environment variables:
 
 ```env
 # App Configuration
-VITE_APP_TITLE=Column Analysis
+VITE_APP_TITLE=Lineage Analysis
 VITE_API_BASE_URL=http://localhost:8000
 VITE_ENV=development
 VITE_API_V1_PREFIX=/api/v1

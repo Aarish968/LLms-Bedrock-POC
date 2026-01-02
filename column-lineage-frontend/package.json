@@ -1,7 +1,7 @@
 {
   "name": "column-lineage-frontend",
   "version": "0.1.0",
-  "description": "React frontend for Column Analysis System",
+  "description": "React frontend for Lineage Analysis System",
   "type": "module",
   "scripts": {
     "dev": "vite",

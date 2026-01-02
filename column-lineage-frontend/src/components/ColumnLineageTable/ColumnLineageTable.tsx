@@ -35,8 +35,8 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
     if (!apiData?.records) return []
     
     return apiData.records.map((record: BaseViewRecord) => ({
-      id: record.sr_no,
-      srNo: record.sr_no,
+      id: record.base_primary_id,
+      basePrimaryId: record.base_primary_id,
       tableName: record.table_name,
     }))
   }, [apiData])
@@ -44,11 +44,11 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
   // Use API data
   const dataToUse = transformedApiData
 
-  // Simplified columns - only Serial No. and Table Name
+  // Simplified columns - only Primary ID and Table Name
   const columns: GridColDef[] = [
     {
-      field: 'srNo',
-      headerName: 'Serial No.',
+      field: 'basePrimaryId',
+      headerName: 'Primary ID',
       width: 150,
       align: 'center',
       headerAlign: 'center',
@@ -110,9 +110,9 @@ const ColumnLineageTable = ({ searchQuery }: ColumnLineageTableProps) => {
       return
     }
 
-    // Find the original record from API data using the selected row ID (sr_no)
-    const selectedSrNo = selectedRows[0]
-    const recordToEdit = apiData?.records.find(record => record.sr_no === selectedSrNo)
+    // Find the original record from API data using the selected row ID (base_primary_id)
+    const selectedBasePrimaryId = selectedRows[0]
+    const recordToEdit = apiData?.records.find(record => record.base_primary_id === selectedBasePrimaryId)
     
     if (recordToEdit) {
       setSelectedRecord(recordToEdit)

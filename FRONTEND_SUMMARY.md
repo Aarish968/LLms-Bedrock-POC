@@ -1,7 +1,7 @@
 # Column Analysis Frontend - Technology Summary
 
 ## 🎯 Project Overview
-**Column Analysis Frontend** is a React-based web application for Database View Column Lineage Analysis System with enterprise-grade AWS Cognito authentication.
+**Column Analysis Frontend** is a React-based web application for Database Lineage Analysis System with enterprise-grade AWS Cognito authentication.
 
 ## 🛠 Technology Stack
 

@@ -2,7 +2,7 @@ import { api, apiUtils, AxiosError } from './client';
 
 // Types for the base view API
 export interface BaseViewRecord {
-  sr_no: number;
+  base_primary_id: number;
   table_name: string;
 }
 
@@ -18,7 +18,7 @@ export interface BaseViewParams {
 }
 
 export interface BaseViewCreateRequest {
-  sr_no: number;
+  base_primary_id: number;
   table_name: string;
 }
 
@@ -74,7 +74,7 @@ export const baseViewService = {
       const axiosError = error as AxiosError;
       
       if (apiUtils.getErrorStatus(axiosError) === 409) {
-        throw new Error(`Record with serial number ${request.sr_no} already exists`);
+        throw new Error(`Record with primary ID ${request.base_primary_id} already exists`);
       }
       
       if (apiUtils.getErrorStatus(axiosError) === 503) {
@@ -89,15 +89,15 @@ export const baseViewService = {
   /**
    * Update an existing base view record
    */
-  async updateBaseViewRecord(srNo: number, request: BaseViewUpdateRequest): Promise<BaseViewRecord> {
+  async updateBaseViewRecord(basePrimaryId: number, request: BaseViewUpdateRequest): Promise<BaseViewRecord> {
     try {
-      const response = await api.put<BaseViewRecord>(`/api/v1/lineage/public/base-view/${srNo}`, request);
+      const response = await api.put<BaseViewRecord>(`/api/v1/lineage/public/base-view/${basePrimaryId}`, request);
       return response.data;
     } catch (error) {
       const axiosError = error as AxiosError;
       
       if (apiUtils.getErrorStatus(axiosError) === 404) {
-        throw new Error(`Record with serial number ${srNo} not found`);
+        throw new Error(`Record with primary ID ${basePrimaryId} not found`);
       }
       
       if (apiUtils.getErrorStatus(axiosError) === 503) {
@@ -112,14 +112,14 @@ export const baseViewService = {
   /**
    * Delete a base view record
    */
-  async deleteBaseViewRecord(srNo: number): Promise<void> {
+  async deleteBaseViewRecord(basePrimaryId: number): Promise<void> {
     try {
-      await api.delete(`/api/v1/lineage/public/base-view/${srNo}`);
+      await api.delete(`/api/v1/lineage/public/base-view/${basePrimaryId}`);
     } catch (error) {
       const axiosError = error as AxiosError;
       
       if (apiUtils.getErrorStatus(axiosError) === 404) {
-        throw new Error(`Record with serial number ${srNo} not found`);
+        throw new Error(`Record with primary ID ${basePrimaryId} not found`);
       }
       
       if (apiUtils.getErrorStatus(axiosError) === 503) {

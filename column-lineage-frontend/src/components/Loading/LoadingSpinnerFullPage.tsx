@@ -16,7 +16,7 @@ const LoadingSpinnerFullPage = () => {
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
         <Analytics sx={{ mr: 1, fontSize: 32, color: 'primary.main' }} />
         <Typography variant="h4" component="h1" color="primary">
-          Column Analysis
+          Lineage Analysis
         </Typography>
       </Box>
       

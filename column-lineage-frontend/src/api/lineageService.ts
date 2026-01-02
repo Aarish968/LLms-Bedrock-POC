@@ -3,8 +3,8 @@ import { api, apiUtils, AxiosError } from './client';
 // Types for lineage analysis API
 export interface LineageAnalysisRequest {
   view_names?: string[];
-  database_filter: string;  // Made mandatory
-  schema_filter: string;    // Made mandatory
+  database_filter?: string;  // Made optional for now
+  schema_filter?: string;    // Made optional for now
   async_processing?: boolean;
   include_metadata?: boolean;
 }

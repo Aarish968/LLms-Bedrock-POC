@@ -18,19 +18,19 @@ interface AddBaseViewModalProps {
 }
 
 export const AddBaseViewModal: React.FC<AddBaseViewModalProps> = ({ open, onClose }) => {
-  const [srNo, setSrNo] = useState<string>('');
+  const [basePrimaryId, setBasePrimaryId] = useState<string>('');
   const [tableName, setTableName] = useState<string>('');
-  const [errors, setErrors] = useState<{ srNo?: string; tableName?: string }>({});
+  const [errors, setErrors] = useState<{ basePrimaryId?: string; tableName?: string }>({});
 
   const createMutation = useCreateBaseView();
 
   const validateForm = () => {
-    const newErrors: { srNo?: string; tableName?: string } = {};
+    const newErrors: { basePrimaryId?: string; tableName?: string } = {};
 
-    if (!srNo.trim()) {
-      newErrors.srNo = 'Serial number is required';
-    } else if (isNaN(Number(srNo)) || Number(srNo) <= 0) {
-      newErrors.srNo = 'Serial number must be a positive number';
+    if (!basePrimaryId.trim()) {
+      newErrors.basePrimaryId = 'Primary ID is required';
+    } else if (isNaN(Number(basePrimaryId)) || Number(basePrimaryId) <= 0) {
+      newErrors.basePrimaryId = 'Primary ID must be a positive number';
     }
 
     if (!tableName.trim()) {
@@ -52,12 +52,12 @@ export const AddBaseViewModal: React.FC<AddBaseViewModalProps> = ({ open, onClos
 
     try {
       await createMutation.mutateAsync({
-        sr_no: Number(srNo),
+        base_primary_id: Number(basePrimaryId),
         table_name: tableName.trim(),
       });
 
       // Reset form and close modal on success
-      setSrNo('');
+      setBasePrimaryId('');
       setTableName('');
       setErrors({});
       onClose();
@@ -69,7 +69,7 @@ export const AddBaseViewModal: React.FC<AddBaseViewModalProps> = ({ open, onClos
 
   const handleClose = () => {
     if (!createMutation.isPending) {
-      setSrNo('');
+      setBasePrimaryId('');
       setTableName('');
       setErrors({});
       createMutation.reset();
@@ -91,12 +91,12 @@ export const AddBaseViewModal: React.FC<AddBaseViewModalProps> = ({ open, onClos
             )}
 
             <TextField
-              label="Serial Number"
+              label="Primary ID"
               type="number"
-              value={srNo}
-              onChange={(e) => setSrNo(e.target.value)}
-              error={!!errors.srNo}
-              helperText={errors.srNo}
+              value={basePrimaryId}
+              onChange={(e) => setBasePrimaryId(e.target.value)}
+              error={!!errors.basePrimaryId}
+              helperText={errors.basePrimaryId}
               disabled={createMutation.isPending}
               required
               fullWidth

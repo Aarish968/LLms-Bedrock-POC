@@ -1,4 +1,4 @@
-# AWS Cognito Setup Guide for Column Analysis
+# AWS Cognito Setup Guide for Lineage Analysis
 
 ## 📋 Prerequisites
 - AWS Account with appropriate permissions

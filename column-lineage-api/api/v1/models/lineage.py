@@ -1,11 +1,16 @@
 """Column lineage data models."""
 
+import os
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
+# Load environment defaults
+DEFAULT_DATABASE = os.getenv("SNOWFLAKE_DATABASE", "CPS_DB")
+DEFAULT_SCHEMA = os.getenv("SNOWFLAKE_SCHEMA", "CPS_DSCI_BR")
 
 
 class ColumnType(str, Enum):
@@ -66,7 +71,7 @@ class ColumnLineageResult(BaseModel):
         description="Confidence score of the mapping"
     )
     metadata: Dict[str, Any] = Field(
-        default_factory=dict, 
+        default_factory=dict,
         description="Additional metadata"
     )
 
@@ -93,11 +98,15 @@ class LineageAnalysisRequest(BaseModel):
         default=None, 
         description="Specific view names to analyze. If None, analyze all views"
     )
+    # Made optional with environment defaults - no longer required in API requests
     database_filter: str = Field(
-        description="Database name to filter views (required)"
+        default=DEFAULT_DATABASE,
+        description=f"Database name to filter views (default: {DEFAULT_DATABASE})"
     )
+    # Made optional with environment defaults - no longer required in API requests  
     schema_filter: str = Field(
-        description="Schema name to filter views (required)"
+        default=DEFAULT_SCHEMA,
+        description=f"Schema name to filter views (default: {DEFAULT_SCHEMA})"
     )
     include_system_views: bool = Field(
         default=False, 
@@ -171,14 +180,14 @@ class LineageExportRequest(BaseModel):
 
 
 class BaseViewRecord(BaseModel):
-    """Base view record model for Snowflake BASE_VIEW table."""
-    sr_no: int = Field(description="Serial number")
+    """Base view record model for configurable BASE_VIEW table."""
+    base_primary_id: int = Field(description="Base primary ID")
     table_name: str = Field(description="Table name")
 
 
 class BaseViewCreateRequest(BaseModel):
     """Request model for creating a new base view record."""
-    sr_no: int = Field(description="Serial number", gt=0)
+    base_primary_id: int = Field(description="Base primary ID", gt=0)
     table_name: str = Field(description="Table name", min_length=1, max_length=255)
 
 

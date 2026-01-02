@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Configuration Validation Script for Column Analysis
+ * Configuration Validation Script for Lineage Analysis
  * Validates AWS Cognito environment variables
  */
 

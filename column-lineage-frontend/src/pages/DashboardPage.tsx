@@ -50,7 +50,7 @@ const DashboardPage = () => {
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
           <Typography variant="body1" color="text.secondary">
-            Database View Column Lineage Analysis System
+            Database Lineage Analysis System
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Person fontSize="small" color="action" />

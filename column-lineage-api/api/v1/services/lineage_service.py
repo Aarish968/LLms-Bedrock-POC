@@ -10,7 +10,7 @@ from uuid import UUID
 import pandas as pd
 
 from api.core.logging import LoggerMixin
-from api.dependencies.database import DatabaseManager
+from api.dependencies.database import DatabaseManager, get_database_engine
 from api.v1.models.lineage import (
     LineageAnalysisRequest,
     ColumnLineageResult,
@@ -19,7 +19,7 @@ from api.v1.models.lineage import (
     ExpressionType,
 )
 from api.v1.services.job_manager import JobManager
-from api.v1.services.sql_parser import SQLParser
+from api.core.analysis import process_all_views, save_results_to_csv, get_analysis_summary
 
 
 class LineageService(LoggerMixin):
@@ -28,7 +28,6 @@ class LineageService(LoggerMixin):
     def __init__(self):
         self.db_manager = DatabaseManager()
         self.job_manager = JobManager()
-        self.sql_parser = SQLParser()
     
     async def process_lineage_analysis(
         self,
@@ -36,71 +35,33 @@ class LineageService(LoggerMixin):
         request: LineageAnalysisRequest,
         user_id: str,
     ) -> List[ColumnLineageResult]:
-        """Process column lineage analysis."""
+        """Process column lineage analysis using standalone analysis module."""
         self.logger.info("Starting lineage analysis processing", job_id=str(job_id))
         
         try:
             # Update job status
             self.job_manager.update_job_status(job_id, "RUNNING", started_at=datetime.utcnow())
             
-            # Get views to analyze
-            if request.view_names:
-                views = await self._get_specific_views(
-                    request.view_names,
-                    database_filter=request.database_filter,
-                    schema_filter=request.schema_filter
-                )
-            else:
-                views = await self._discover_views(
-                    database_filter=request.database_filter,
-                    schema_filter=request.schema_filter,
-                    include_system_views=request.include_system_views,
-                    max_views=request.max_views,
-                )
+            # Get database engine for the standalone module
+            engine = get_database_engine()
             
-            # Update total views count
-            self.job_manager.update_job_progress(job_id, total_views=len(views))
+            # Determine environment from request or default to prod
+            sf_env = getattr(request, 'environment', 'prod')
             
-            results = []
-            successful_views = 0
-            failed_views = 0
+            # Use standalone analysis module
+            self.logger.info("Starting standalone analysis", 
+                           view_count=len(request.view_names) if request.view_names else "all",
+                           environment=sf_env)
             
-            for view in views:
-                try:
-                    self.logger.info("Processing view", view_name=view.view_name)
-                    
-                    # Get view DDL with database and schema context
-                    ddl = await self._get_view_ddl(
-                        view.view_name, 
-                        view.database_name, 
-                        view.schema_name
-                    )
-                    if not ddl:
-                        self.logger.warning("No DDL found for view", view_name=view.view_name)
-                        failed_views += 1
-                        continue
-                    
-                    # Parse DDL and extract lineage
-                    view_results = await self._analyze_view_lineage(view.view_name, ddl)
-                    results.extend(view_results)
-                    successful_views += 1
-                    
-                    # Update progress
-                    self.job_manager.update_job_progress(
-                        job_id,
-                        processed_views=successful_views + failed_views,
-                        successful_views=successful_views,
-                        failed_views=failed_views,
-                    )
-                    
-                except Exception as e:
-                    self.logger.error(
-                        "Failed to process view",
-                        view_name=view.view_name,
-                        error=str(e),
-                    )
-                    failed_views += 1
-                    continue
+            # Process views using standalone module
+            csv_rows = process_all_views(
+                sf_env=sf_env,
+                view_names=request.view_names,
+                engine=engine
+            )
+            
+            # Convert CSV rows to API result format
+            results = self._convert_csv_rows_to_api_results(csv_rows)
             
             # Store results
             self.job_manager.store_job_results(job_id, results)
@@ -108,12 +69,13 @@ class LineageService(LoggerMixin):
             # Auto-save results to CSV file
             await self._auto_save_results_to_csv(job_id, results)
             
-            # Auto-save results to database table in the same database and schema
-            await self._auto_save_results_to_database(
-                results, 
-                request.database_filter, 
-                request.schema_filter
-            )
+            # Auto-save results to database table
+            if request.database_filter and request.schema_filter:
+                await self._auto_save_results_to_database(
+                    results, 
+                    request.database_filter, 
+                    request.schema_filter
+                )
             
             # Update job completion
             self.job_manager.update_job_status(
@@ -127,8 +89,6 @@ class LineageService(LoggerMixin):
                 "Lineage analysis completed",
                 job_id=str(job_id),
                 total_results=len(results),
-                successful_views=successful_views,
-                failed_views=failed_views,
             )
             
             return results
@@ -142,6 +102,55 @@ class LineageService(LoggerMixin):
                 error_message=str(e),
             )
             raise
+    
+    def _convert_csv_rows_to_api_results(self, csv_rows: List[List[str]]) -> List[ColumnLineageResult]:
+        """Convert CSV rows from standalone analysis to API result format."""
+        results = []
+        
+        for row in csv_rows:
+            if len(row) < 6:
+                continue
+                
+            view_name, view_column, column_type, source_table, source_column, expression_type = row[:6]
+            
+            # Map column type
+            if column_type.upper() == 'DIRECT':
+                col_type = ColumnType.DIRECT
+                confidence = 1.0
+            elif column_type.upper() == 'DERIVED':
+                col_type = ColumnType.DERIVED
+                confidence = 0.8
+            elif column_type.upper() == 'ERROR':
+                col_type = ColumnType.UNKNOWN
+                confidence = 0.0
+            else:
+                col_type = ColumnType.UNKNOWN
+                confidence = 0.5
+            
+            # Map expression type
+            expr_type = None
+            if expression_type and expression_type.upper() not in ['', 'ERROR']:
+                try:
+                    expr_type = ExpressionType(expression_type.upper())
+                except ValueError:
+                    expr_type = None
+            
+            result = ColumnLineageResult(
+                view_name=view_name,
+                view_column=view_column,
+                column_type=col_type,
+                source_table=source_table,
+                source_column=source_column,
+                expression_type=expr_type,
+                confidence_score=confidence,
+                metadata={
+                    "analysis_method": "standalone_integrated_parser",
+                    "original_expression_type": expression_type
+                }
+            )
+            results.append(result)
+        
+        return results
     
     async def get_available_databases(self) -> List[str]:
         """Get list of available databases."""
@@ -580,18 +589,6 @@ class LineageService(LoggerMixin):
             self.logger.error("Failed to discover views", error=str(e))
             raise
     
-    async def _get_specific_views(self, view_names: List[str], database_filter: str = None, schema_filter: str = None) -> List[ViewInfo]:
-        """Get specific views by name with proper database and schema context."""
-        views = []
-        for view_name in view_names:
-            views.append(ViewInfo(
-                view_name=view_name,
-                schema_name=schema_filter or "UNKNOWN",
-                database_name=database_filter or "CURRENT",
-                column_count=0,
-            ))
-        return views
-    
     async def _get_view_ddl(self, view_name: str, database_name: str = None, schema_name: str = None) -> Optional[str]:
         """Get DDL for a specific view."""
         try:
@@ -654,99 +651,6 @@ class LineageService(LoggerMixin):
             
         except Exception as e:
             self.logger.error("Failed to get DDL", view_name=view_name, error=str(e))
-            return None
-    
-    async def _analyze_view_lineage(
-        self, 
-        view_name: str, 
-        ddl: str
-    ) -> List[ColumnLineageResult]:
-        """Analyze column lineage for a single view."""
-        try:
-            # Parse DDL using SQL parser
-            analysis = self.sql_parser.analyze_ddl_statement(ddl)
-            
-            if "error" in analysis:
-                self.logger.error(
-                    "DDL parsing failed",
-                    view_name=view_name,
-                    error=analysis["error"],
-                )
-                return []
-            
-            results = []
-            
-            # Process column mappings
-            for col_name, mapping in analysis.get("column_mappings", {}).items():
-                result = ColumnLineageResult(
-                    view_name=view_name,
-                    view_column=col_name,
-                    column_type=ColumnType.DIRECT,
-                    source_table=mapping.get("source_table", "UNKNOWN"),
-                    source_column=mapping.get("source_column", col_name),
-                    confidence_score=1.0,
-                    metadata={
-                        "table_alias": mapping.get("table_alias", ""),
-                        "resolution_method": mapping.get("resolution_method", "direct"),
-                    },
-                )
-                results.append(result)
-            
-            # Process derived columns
-            for col_name, derived_info in analysis.get("derived_columns", {}).items():
-                # Determine expression type
-                expr_type = self._map_expression_type(derived_info.get("expression_type", ""))
-                
-                # Get source columns
-                source_columns = derived_info.get("referenced_columns", [])
-                if source_columns:
-                    # Create result for first source (primary)
-                    primary_source = source_columns[0]
-                    result = ColumnLineageResult(
-                        view_name=view_name,
-                        view_column=col_name,
-                        column_type=ColumnType.DERIVED,
-                        source_table=primary_source.get("table", "UNKNOWN"),
-                        source_column=primary_source.get("column", col_name),
-                        expression_type=expr_type,
-                        confidence_score=0.8,  # Lower confidence for derived columns
-                        metadata={
-                            "expression": derived_info.get("expression", ""),
-                            "all_sources": source_columns,
-                        },
-                    )
-                    results.append(result)
-                else:
-                    # No clear source, mark as unknown
-                    result = ColumnLineageResult(
-                        view_name=view_name,
-                        view_column=col_name,
-                        column_type=ColumnType.UNKNOWN,
-                        source_table="CALCULATED",
-                        source_column="LITERAL",
-                        expression_type=expr_type,
-                        confidence_score=0.5,
-                        metadata={
-                            "expression": derived_info.get("expression", ""),
-                        },
-                    )
-                    results.append(result)
-            
-            return results
-            
-        except Exception as e:
-            self.logger.error(
-                "Failed to analyze view lineage",
-                view_name=view_name,
-                error=str(e),
-            )
-            return []
-    
-    def _map_expression_type(self, expr_type_str: str) -> Optional[ExpressionType]:
-        """Map expression type string to enum."""
-        try:
-            return ExpressionType(expr_type_str.upper())
-        except ValueError:
             return None
     
     async def _export_csv(

@@ -14,7 +14,6 @@ import {
 } from '@mui/material';
 import { PlayArrow, Visibility, Refresh } from '@mui/icons-material';
 import { useLineageWorkflow } from '@/hooks/lineage/useLineageAnalysis';
-import DatabaseSchemaSelector from './DatabaseSchemaSelector';
 import DebugInfo from './DebugInfo';
 
 interface LineageAnalysisDialogProps {
@@ -23,9 +22,6 @@ interface LineageAnalysisDialogProps {
 }
 
 const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onClose }) => {
-  const [selectedDatabase, setSelectedDatabase] = useState('');
-  const [selectedSchema, setSelectedSchema] = useState('');
-
   const {
     currentJobId,
     showResults,
@@ -43,8 +39,6 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
 
   const handleStartAnalysis = async () => {
     await startAnalysis({
-      database_filter: selectedDatabase,
-      schema_filter: selectedSchema,
       async_processing: true,
       include_metadata: true,
     });
@@ -52,12 +46,10 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
 
   const handleClose = () => {
     resetWorkflow();
-    setSelectedDatabase('');
-    setSelectedSchema('');
     onClose();
   };
 
-  const canStartAnalysis = selectedDatabase && selectedSchema && !isAnalysisRunning;
+  const canStartAnalysis = !isAnalysisRunning;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -86,7 +78,7 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <DialogTitle>
         <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">Column Lineage Analysis</Typography>
+          <Typography variant="h6">Lineage Analysis</Typography>
           {currentJobId && (
             <Chip
               label={`Job: ${currentJobId.slice(0, 8)}...`}
@@ -111,16 +103,8 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
           // Configuration Phase
           <Box>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Configure and start column lineage analysis for your database views.
+              Start column lineage analysis for your database views.
             </Typography>
-
-            <DatabaseSchemaSelector
-              selectedDatabase={selectedDatabase}
-              selectedSchema={selectedSchema}
-              onDatabaseChange={setSelectedDatabase}
-              onSchemaChange={setSelectedSchema}
-              disabled={isAnalysisRunning}
-            />
           </Box>
         ) : (
           // Job Status Phase

@@ -37,6 +37,9 @@ class Settings:
     AUTO_SAVE_TO_DATABASE: bool = os.getenv("AUTO_SAVE_TO_DATABASE", "true").lower() == "true"
     RESULTS_DIRECTORY: str = os.getenv("RESULTS_DIRECTORY", "analysis_results")
     
+    # Base View Table Configuration
+    BASE_VIEW_TABLE: str = os.getenv("BASE_VIEW_TABLE", "PUBLIC.BASE_VIEW")
+    
     # API settings
     PROJECT_NAME: str = os.getenv("PROJECT_NAME", "Column Lineage API")
     VERSION: str = os.getenv("VERSION", "0.1.0")

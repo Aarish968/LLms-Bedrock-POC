@@ -59,7 +59,7 @@ export const EditBaseViewModal: React.FC<EditBaseViewModalProps> = ({
 
     try {
       await updateMutation.mutateAsync({
-        srNo: record.sr_no,
+        basePrimaryId: record.base_primary_id,
         request: {
           table_name: tableName.trim(),
         },
@@ -102,7 +102,7 @@ export const EditBaseViewModal: React.FC<EditBaseViewModalProps> = ({
 
             <Box>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Serial Number
+                Primary ID
               </Typography>
               <Typography variant="h6" sx={{ 
                 p: 1.5, 
@@ -110,7 +110,7 @@ export const EditBaseViewModal: React.FC<EditBaseViewModalProps> = ({
                 borderRadius: 1,
                 fontFamily: 'monospace'
               }}>
-                {record.sr_no}
+                {record.base_primary_id}
               </Typography>
             </Box>
 

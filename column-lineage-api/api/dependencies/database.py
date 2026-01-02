@@ -107,7 +107,7 @@ def _get_legacy_database_engine() -> Optional[Engine]:
         
         # Import the legacy connection class
         try:
-            from api.common.database_connection import SnowflakeConnection
+            from .database_connection import SnowflakeConnection
             logger.info("Successfully imported SnowflakeConnection")
         except ImportError as import_err:
             logger.error(f"Failed to import SnowflakeConnection: {import_err}")
