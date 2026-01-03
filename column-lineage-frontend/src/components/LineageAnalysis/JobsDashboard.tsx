@@ -51,6 +51,19 @@ const JobsDashboard: React.FC<JobsDashboardProps> = ({ onNewAnalysis }) => {
     refetchJobs();
   };
 
+  // Check if there's any running job to disable new analysis
+  const hasRunningJob = jobs?.some(job => 
+    job.status === 'PENDING' || job.status === 'RUNNING'
+  );
+
+  const handleNewAnalysis = () => {
+    if (hasRunningJob) {
+      // Show warning but still allow opening dialog
+      console.warn('There is already a running job');
+    }
+    onNewAnalysis();
+  };
+
   if (jobsLoading) {
     return (
       <Box display="flex" justifyContent="center" p={3}>
@@ -76,12 +89,20 @@ const JobsDashboard: React.FC<JobsDashboardProps> = ({ onNewAnalysis }) => {
           <Button
             variant="contained"
             startIcon={<Add />}
-            onClick={onNewAnalysis}
+            onClick={handleNewAnalysis}
+            disabled={hasRunningJob}
+            title={hasRunningJob ? 'Please wait for current analysis to complete' : 'Start new analysis'}
           >
             New Analysis
           </Button>
         </Box>
       </Box>
+
+      {hasRunningJob && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Analysis in progress. New analysis will be available once current job completes.
+        </Alert>
+      )}
 
       {!jobs || jobs.length === 0 ? (
         <Alert severity="info">

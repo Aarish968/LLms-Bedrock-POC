@@ -36,6 +36,7 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
     isJobRunning,
     isJobCompleted,
     isJobFailed,
+    canStartNewAnalysis,
   } = useLineageWorkflow();
 
   const handleStartAnalysis = async () => {
@@ -51,11 +52,18 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
   };
 
   const handleClose = () => {
+    // Only allow closing if no job is running
+    if (isJobRunning) {
+      // Don't close, but could show a warning
+      return;
+    }
     resetWorkflow();
     onClose();
   };
 
-  const canStartAnalysis = !isAnalysisRunning;
+  const handleNewAnalysis = () => {
+    resetWorkflow();
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -80,8 +88,31 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
     return (jobStatus.processed_views / jobStatus.total_views) * 100;
   };
 
+  const getStatusMessage = () => {
+    if (!jobStatus) return '';
+    
+    switch (jobStatus.status) {
+      case 'PENDING':
+        return 'Analysis is starting...';
+      case 'RUNNING':
+        return `Processing views: ${jobStatus.processed_views} / ${jobStatus.total_views}`;
+      case 'COMPLETED':
+        return `Analysis completed! Found ${jobStatus.results_count} lineage relationships.`;
+      case 'FAILED':
+        return 'Analysis failed. Please check the error message below.';
+      default:
+        return '';
+    }
+  };
+
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
+    <Dialog 
+      open={open} 
+      onClose={handleClose} 
+      maxWidth="md" 
+      fullWidth
+      disableEscapeKeyDown={isJobRunning} // Prevent closing during job execution
+    >
       <DialogTitle>
         <Box display="flex" alignItems="center" justifyContent="space-between">
           <Typography variant="h6">Lineage Analysis</Typography>
@@ -111,6 +142,12 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Start column lineage analysis for your database views.
             </Typography>
+            
+            {!canStartNewAnalysis && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                Another analysis is currently in progress. Please wait for it to complete.
+              </Alert>
+            )}
           </Box>
         ) : (
           // Job Status Phase
@@ -125,13 +162,14 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
                 />
               </Box>
 
-              {jobStatus && (
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                {getStatusMessage()}
+              </Typography>
+
+              {jobStatus && (jobStatus.status === 'PENDING' || jobStatus.status === 'RUNNING') && (
                 <Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    Progress: {jobStatus.processed_views} / {jobStatus.total_views} views processed
-                  </Typography>
                   <LinearProgress
-                    variant="determinate"
+                    variant={jobStatus.total_views > 0 ? "determinate" : "indeterminate"}
                     value={getProgressValue()}
                     sx={{ mb: 2 }}
                   />
@@ -188,8 +226,11 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={handleClose}>
-          Close
+        <Button 
+          onClick={handleClose}
+          disabled={isJobRunning}
+        >
+          {isJobRunning ? 'Running...' : 'Close'}
         </Button>
 
         {!currentJobId ? (
@@ -197,7 +238,7 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
             variant="contained"
             startIcon={<PlayArrow />}
             onClick={handleStartAnalysis}
-            disabled={!canStartAnalysis}
+            disabled={!canStartNewAnalysis}
           >
             {isAnalysisRunning ? 'Starting...' : 'Start Analysis'}
           </Button>
@@ -218,7 +259,7 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
             <Button
               variant="outlined"
               startIcon={<Refresh />}
-              onClick={resetWorkflow}
+              onClick={handleNewAnalysis}
               disabled={isJobRunning}
             >
               New Analysis

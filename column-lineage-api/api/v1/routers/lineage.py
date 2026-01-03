@@ -48,75 +48,40 @@ async def start_lineage_analysis(
     )
     
     try:
-        # Create job
+        # Create job immediately
         job = LineageAnalysisJob(
             total_views=0,  # Will be updated during processing
             request_params=request.model_dump(),
         )
         
-        logger.info("Created job", job_id=str(job.job_id), request_params=request.model_dump())
+        logger.info("Created job", job_id=str(job.job_id))
         
-        # Store job
+        # Store job immediately
         job_manager.create_job(job)
         
-        if request.async_processing:
-            # Start background processing
-            logger.info("Starting background task", job_id=str(job.job_id))
-            background_tasks.add_task(
-                lineage_service.process_lineage_analysis,
-                job.job_id,
-                request,
-                current_user.id,
-            )
+        # Always use async processing to prevent frontend timeouts
+        logger.info("Adding background task", job_id=str(job.job_id))
+        background_tasks.add_task(
+            lineage_service.process_lineage_analysis,
+            job.job_id,
+            request,
+            current_user.id,
+        )
+        
+        # Return immediately with PENDING status
+        return LineageAnalysisResponse(
+            job_id=job.job_id,
+            status=JobStatus.PENDING,
+            message="Analysis started. Use the job_id to check status and retrieve results.",
+            results_url=f"/api/v1/lineage/results/{job.job_id}",
+        )
             
-            return LineageAnalysisResponse(
-                job_id=job.job_id,
-                status=JobStatus.PENDING,
-                message="Analysis started. Use the job_id to check status and retrieve results.",
-                results_url=f"/api/v1/lineage/results/{job.job_id}",
-            )
-        else:
-            # Synchronous processing
-            logger.info("Starting synchronous processing", job_id=str(job.job_id))
-            try:
-                results = await lineage_service.process_lineage_analysis(
-                    job.job_id, request, current_user.id
-                )
-                
-                # Get the updated job to return the correct status
-                updated_job = job_manager.get_job(job.job_id)
-                
-                # If the job status is still PENDING after processing, force it to COMPLETED
-                if updated_job and updated_job.status == JobStatus.PENDING:
-                    logger.warning(
-                        "Job status still PENDING after synchronous processing, updating to COMPLETED",
-                        job_id=str(job.job_id)
-                    )
-                    job_manager.update_job_status(
-                        job.job_id,
-                        JobStatus.COMPLETED,
-                        completed_at=datetime.utcnow(),
-                    )
-                    final_status = JobStatus.COMPLETED
-                else:
-                    final_status = updated_job.status if updated_job else JobStatus.COMPLETED
-                
-                return LineageAnalysisResponse(
-                    job_id=job.job_id,
-                    status=final_status,
-                    message="Analysis completed successfully.",
-                    results_url=f"/api/v1/lineage/results/{job.job_id}",
-                )
-            except Exception as sync_error:
-                logger.error("Synchronous processing failed", job_id=str(job.job_id), error=str(sync_error))
-                # Update job status to failed
-                job_manager.update_job_status(
-                    job.job_id,
-                    "FAILED",
-                    completed_at=datetime.utcnow(),
-                    error_message=str(sync_error),
-                )
-                raise
+    except Exception as e:
+        logger.error("Failed to start lineage analysis", error=str(e), user_id=current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start analysis: {str(e)}",
+        )
             
     except Exception as e:
         logger.error("Failed to start lineage analysis", error=str(e), user_id=current_user.id)
