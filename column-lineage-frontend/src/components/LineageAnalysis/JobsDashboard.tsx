@@ -98,6 +98,11 @@ const JobsDashboard: React.FC<JobsDashboardProps> = ({ onNewAnalysis }) => {
               processedViews={job.processed_views}
               resultsCount={job.results_count}
               createdAt={job.created_at}
+              startedAt={job.started_at}
+              completedAt={job.completed_at}
+              successfulViews={job.successful_views}
+              failedViews={job.failed_views}
+              requestParams={job.request_params}
               errorMessage={job.error_message}
               onViewResults={() => handleViewResults(job.job_id)}
               onRefresh={() => handleRefreshJob(job.job_id)}

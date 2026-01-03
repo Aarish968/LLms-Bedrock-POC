@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Card,
   CardContent,
@@ -8,8 +8,13 @@ import {
   LinearProgress,
   Button,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Paper,
 } from '@mui/material';
-import { Visibility, Refresh, Cancel } from '@mui/icons-material';
+import { Visibility, Refresh, Cancel, ContentCopy } from '@mui/icons-material';
 
 interface JobStatusCardProps {
   jobId: string;
@@ -18,6 +23,11 @@ interface JobStatusCardProps {
   processedViews: number;
   resultsCount: number;
   createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  successfulViews?: number;
+  failedViews?: number;
+  requestParams?: any;
   errorMessage?: string;
   onViewResults: () => void;
   onRefresh: () => void;
@@ -32,12 +42,18 @@ const JobStatusCard: React.FC<JobStatusCardProps> = ({
   processedViews,
   resultsCount,
   createdAt,
+  startedAt,
+  completedAt,
+  successfulViews = 0,
+  failedViews = 0,
+  requestParams,
   errorMessage,
   onViewResults,
   onRefresh,
   onCancel,
   isLoading = false,
 }) => {
+  const [showJobData, setShowJobData] = useState(false);
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'PENDING':
@@ -63,6 +79,36 @@ const JobStatusCard: React.FC<JobStatusCardProps> = ({
   const isJobRunning = status === 'PENDING' || status === 'RUNNING';
   const isJobCompleted = status === 'COMPLETED';
   const isJobFailed = status === 'FAILED';
+
+  const handleViewResults = () => {
+    setShowJobData(true);
+  };
+
+  const handleCloseJobData = () => {
+    setShowJobData(false);
+  };
+
+  const getJobDataAsJson = () => {
+    return {
+      job_id: jobId,
+      status: status,
+      created_at: createdAt,
+      started_at: startedAt || null,
+      completed_at: completedAt || null,
+      total_views: totalViews,
+      processed_views: processedViews,
+      successful_views: successfulViews,
+      failed_views: failedViews,
+      error_message: errorMessage || null,
+      results_count: resultsCount,
+      request_params: requestParams || {}
+    };
+  };
+
+  const copyToClipboard = () => {
+    const jsonData = JSON.stringify(getJobDataAsJson(), null, 2);
+    navigator.clipboard.writeText(jsonData);
+  };
 
   return (
     <Card variant="outlined" sx={{ mb: 2 }}>
@@ -111,7 +157,7 @@ const JobStatusCard: React.FC<JobStatusCardProps> = ({
             <Button
               variant="contained"
               startIcon={<Visibility />}
-              onClick={onViewResults}
+              onClick={handleViewResults}
               size="small"
             >
               View Results
@@ -141,6 +187,50 @@ const JobStatusCard: React.FC<JobStatusCardProps> = ({
           )}
         </Box>
       </CardContent>
+
+      {/* Job Data Dialog */}
+      <Dialog
+        open={showJobData}
+        onClose={handleCloseJobData}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Job Data - {jobId.slice(0, 8)}...
+        </DialogTitle>
+        <DialogContent>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              backgroundColor: 'grey.50',
+              border: '1px solid',
+              borderColor: 'grey.300',
+              borderRadius: 1,
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+              overflow: 'auto',
+              maxHeight: '400px'
+            }}
+          >
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify(getJobDataAsJson(), null, 2)}
+            </pre>
+          </Paper>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            startIcon={<ContentCopy />}
+            onClick={copyToClipboard}
+            variant="outlined"
+          >
+            Copy JSON
+          </Button>
+          <Button onClick={handleCloseJobData}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 };
