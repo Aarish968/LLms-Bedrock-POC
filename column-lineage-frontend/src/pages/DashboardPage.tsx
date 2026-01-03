@@ -33,6 +33,12 @@ const DashboardPage = () => {
     setAnalysisDialogOpen(true)
   }
 
+  const handleAnalysisStarted = () => {
+    // Switch to Analysis Jobs tab when analysis starts
+    setCurrentTab(1)
+    setAnalysisDialogOpen(false)
+  }
+
   const handleCloseAnalysisDialog = () => {
     setAnalysisDialogOpen(false)
   }
@@ -97,7 +103,7 @@ const DashboardPage = () => {
 
       {/* Main Content Tabs */}
       <Card>
-        {/* <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={currentTab} onChange={handleTabChange}>
             <Tab 
               icon={<Analytics />} 
@@ -110,7 +116,7 @@ const DashboardPage = () => {
               iconPosition="start"
             />
           </Tabs>
-        </Box> */}
+        </Box>
 
         <CardContent>
           {currentTab === 0 && (
@@ -168,6 +174,7 @@ const DashboardPage = () => {
       <LineageAnalysisDialog
         open={analysisDialogOpen}
         onClose={handleCloseAnalysisDialog}
+        onAnalysisStarted={handleAnalysisStarted}
       />
     </Box>
   )

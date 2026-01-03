@@ -19,9 +19,10 @@ import DebugInfo from './DebugInfo';
 interface LineageAnalysisDialogProps {
   open: boolean;
   onClose: () => void;
+  onAnalysisStarted?: () => void;
 }
 
-const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onClose }) => {
+const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onClose, onAnalysisStarted }) => {
   const {
     currentJobId,
     showResults,
@@ -42,6 +43,11 @@ const LineageAnalysisDialog: React.FC<LineageAnalysisDialogProps> = ({ open, onC
       async_processing: true,
       include_metadata: true,
     });
+    
+    // Notify parent component that analysis has started
+    if (onAnalysisStarted) {
+      onAnalysisStarted();
+    }
   };
 
   const handleClose = () => {
