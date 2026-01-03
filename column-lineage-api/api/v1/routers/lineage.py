@@ -50,7 +50,7 @@ async def start_lineage_analysis(
     try:
         # Create job
         job = LineageAnalysisJob(
-            total_views=len(request.view_names) if request.view_names else 0,
+            total_views=0,  # Will be updated during processing
             request_params=request.model_dump(),
         )
         

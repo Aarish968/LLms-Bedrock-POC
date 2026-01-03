@@ -48,9 +48,34 @@ class LineageService(LoggerMixin):
             # Determine environment from request or default to prod
             sf_env = getattr(request, 'environment', 'prod')
             
+            # Get the actual list of views to process for progress tracking
+            if request.view_names:
+                views_to_process = request.view_names
+                total_views = len(views_to_process)
+            else:
+                # Get all views from the database to count them
+                try:
+                    all_views = await self.get_available_views(
+                        database_filter=request.database_filter or "CPS_DB",
+                        schema_filter=request.schema_filter or "CPS_DSCI_BR"
+                    )
+                    views_to_process = [view.view_name for view in all_views]
+                    total_views = len(views_to_process)
+                except Exception as e:
+                    self.logger.warning(f"Could not get view count, using estimate: {e}")
+                    total_views = 100  # Fallback estimate
+                    views_to_process = None
+            
+            # Update job with actual total views count
+            self.job_manager.update_job_progress(
+                job_id,
+                total_views=total_views,
+                processed_views=0
+            )
+            
             # Use standalone analysis module
             self.logger.info("Starting standalone analysis", 
-                           view_count=len(request.view_names) if request.view_names else "all",
+                           view_count=total_views,
                            environment=sf_env)
             
             # Process views using standalone module
@@ -62,6 +87,22 @@ class LineageService(LoggerMixin):
             
             # Convert CSV rows to API result format
             results = self._convert_csv_rows_to_api_results(csv_rows)
+            
+            # Calculate successful and failed views from results
+            processed_view_names = set()
+            for result in results:
+                processed_view_names.add(result.view_name)
+            
+            successful_views = len(processed_view_names)
+            failed_views = max(0, total_views - successful_views)
+            
+            # Update final progress
+            self.job_manager.update_job_progress(
+                job_id,
+                processed_views=total_views,
+                successful_views=successful_views,
+                failed_views=failed_views
+            )
             
             # Store results
             self.job_manager.store_job_results(job_id, results)
@@ -92,6 +133,8 @@ class LineageService(LoggerMixin):
                 "Lineage analysis completed",
                 job_id=str(job_id),
                 total_results=len(results),
+                successful_views=successful_views,
+                failed_views=failed_views
             )
             
             return results

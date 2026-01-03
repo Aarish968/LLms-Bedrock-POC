@@ -89,6 +89,16 @@ const JobStatusCard: React.FC<JobStatusCardProps> = ({
   };
 
   const getJobDataAsJson = () => {
+    // Filter out unwanted fields from request_params
+    const filteredRequestParams = { ...requestParams };
+    if (filteredRequestParams) {
+      delete filteredRequestParams.view_names;
+      delete filteredRequestParams.include_system_views;
+      delete filteredRequestParams.max_views;
+      delete filteredRequestParams.async_processing;
+      delete filteredRequestParams.include_metadata;
+    }
+
     return {
       job_id: jobId,
       status: status,
@@ -101,7 +111,7 @@ const JobStatusCard: React.FC<JobStatusCardProps> = ({
       failed_views: failedViews,
       error_message: errorMessage || null,
       results_count: resultsCount,
-      request_params: requestParams || {}
+      request_params: filteredRequestParams || {}
     };
   };
 
