@@ -29,42 +29,108 @@ class LineageService(LoggerMixin):
         self.db_manager = DatabaseManager()
         self.job_manager = JobManager()
     
-    async def process_lineage_analysis(
+    def _blocking_lineage_analysis(
         self,
         job_id: UUID,
         request: LineageAnalysisRequest,
         user_id: str,
     ) -> List[ColumnLineageResult]:
-        """Process column lineage analysis using standalone analysis module."""
-        self.logger.info("Starting lineage analysis processing", job_id=str(job_id))
+        """
+        Blocking version of lineage analysis for thread pool execution.
+        This runs in a separate thread to avoid blocking the main event loop.
+        """
+        import asyncio
+        from api.v1.services.job_logger import JobLoggerManager
+        
+        # Get job-specific logger
+        job_logger = JobLoggerManager.get_logger(job_id)
+        
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            # Log job start
+            job_logger.log_job_start(request.model_dump())
+            
+            # Run the async analysis in this thread's event loop
+            result = loop.run_until_complete(
+                self._process_lineage_analysis_internal(job_id, request, user_id, job_logger)
+            )
+            
+            # Log successful completion
+            job_logger.log_job_completion("COMPLETED", len(result) if result else 0)
+            
+            return result
+            
+        except Exception as e:
+            # Log failed completion
+            job_logger.log_job_completion("FAILED", 0, str(e))
+            raise
+        finally:
+            loop.close()
+            # Note: Don't cleanup logger here as it might be accessed later for log viewing
+    
+    async def _process_lineage_analysis_internal(
+        self,
+        job_id: UUID,
+        request: LineageAnalysisRequest,
+        user_id: str,
+        job_logger,
+    ) -> List[ColumnLineageResult]:
+        """Internal async lineage analysis processing with job-specific logging."""
+        job_logger.info("Starting lineage analysis processing")
         
         try:
             # Update job status
             self.job_manager.update_job_status(job_id, "RUNNING", started_at=datetime.utcnow())
+            job_logger.info("Job status updated to RUNNING")
             
             # Get database engine for the standalone module
             engine = get_database_engine()
+            job_logger.info("Database engine obtained")
             
             # Determine environment from request or default to prod
             sf_env = getattr(request, 'environment', 'prod')
+            job_logger.info(f"Using Snowflake environment: {sf_env}")
             
             # Get the actual list of views to process for progress tracking
             if request.view_names:
                 views_to_process = request.view_names
                 total_views = len(views_to_process)
+                job_logger.info(f"Processing {total_views} specified views")
             else:
-                # Get all views from the database to count them
+                # Get all views from the database to count them with timeout
                 try:
-                    all_views = await self.get_available_views(
-                        database_filter=request.database_filter or "CPS_DB",
-                        schema_filter=request.schema_filter or "CPS_DSCI_BR"
+                    job_logger.info("Discovering available views from database")
+                    
+                    # Add timeout to prevent hanging
+                    import asyncio
+                    all_views = await asyncio.wait_for(
+                        self.get_available_views(
+                            database_filter=request.database_filter or "CPS_DB",
+                            schema_filter=request.schema_filter or "CPS_DSCI_BR"
+                        ),
+                        timeout=60  # 60 second timeout for view discovery
                     )
+                    
                     views_to_process = [view.view_name for view in all_views]
                     total_views = len(views_to_process)
+                    job_logger.info(f"Discovered {total_views} views from database")
+                    
+                except asyncio.TimeoutError:
+                    job_logger.error("View discovery timed out after 60 seconds")
+                    raise Exception("View discovery timed out - database may be unresponsive")
                 except Exception as e:
-                    self.logger.warning(f"Could not get view count, using estimate: {e}")
-                    total_views = 100  # Fallback estimate
+                    job_logger.warning(f"Could not get view count, using fallback: {e}")
+                    total_views = 10  # Smaller fallback for safety
                     views_to_process = None
+                    job_logger.info(f"Using fallback: processing first {total_views} views")
+            
+            # Ensure we have a reasonable number of views
+            if total_views == 0:
+                job_logger.warning("No views found to process")
+                total_views = 1  # Prevent division by zero
             
             # Update job with actual total views count
             self.job_manager.update_job_progress(
@@ -72,21 +138,29 @@ class LineageService(LoggerMixin):
                 total_views=total_views,
                 processed_views=0
             )
+            job_logger.log_progress(0, total_views, "Analysis initialized")
             
             # Use standalone analysis module
-            self.logger.info("Starting standalone analysis", 
-                           view_count=total_views,
-                           environment=sf_env)
+            job_logger.info(f"Starting standalone analysis with {total_views} views")
             
-            # Process views using standalone module
-            csv_rows = process_all_views(
-                sf_env=sf_env,
-                view_names=request.view_names,
-                engine=engine
-            )
+            # Process views using standalone module with progress tracking and timeout
+            try:
+                csv_rows = await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(
+                        None,  # Use default executor
+                        self._process_views_with_logging,
+                        sf_env, request.view_names, engine, job_id, job_logger, total_views
+                    ),
+                    timeout=1800  # 30 minute timeout for processing
+                )
+            except asyncio.TimeoutError:
+                job_logger.error("View processing timed out after 30 minutes")
+                raise Exception("Analysis timed out - processing took too long")
             
             # Convert CSV rows to API result format
+            job_logger.info("Converting results to API format")
             results = self._convert_csv_rows_to_api_results(csv_rows)
+            job_logger.info(f"Converted {len(results)} results")
             
             # Calculate successful and failed views from results
             processed_view_names = set()
@@ -96,6 +170,8 @@ class LineageService(LoggerMixin):
             successful_views = len(processed_view_names)
             failed_views = max(0, total_views - successful_views)
             
+            job_logger.info(f"Analysis summary: {successful_views} successful, {failed_views} failed")
+            
             # Update final progress
             self.job_manager.update_job_progress(
                 job_id,
@@ -103,15 +179,19 @@ class LineageService(LoggerMixin):
                 successful_views=successful_views,
                 failed_views=failed_views
             )
+            job_logger.log_progress(total_views, total_views, "Analysis completed")
             
             # Store results
+            job_logger.info("Storing job results")
             self.job_manager.store_job_results(job_id, results)
             
             # Auto-save results to CSV file
+            job_logger.info("Auto-saving results to CSV file")
             await self._auto_save_results_to_csv(job_id, results)
             
             # Auto-save results to database table
             if request.database_filter and request.schema_filter:
+                job_logger.info("Auto-saving results to database table")
                 settings = get_settings()
                 target_database = settings.AUTO_SAVE_TARGET_DATABASE or request.database_filter
                 target_schema = settings.AUTO_SAVE_TARGET_SCHEMA or request.schema_filter
@@ -129,18 +209,12 @@ class LineageService(LoggerMixin):
                 results_count=len(results),
             )
             
-            self.logger.info(
-                "Lineage analysis completed",
-                job_id=str(job_id),
-                total_results=len(results),
-                successful_views=successful_views,
-                failed_views=failed_views
-            )
+            job_logger.info(f"Lineage analysis completed successfully with {len(results)} results")
             
             return results
             
         except Exception as e:
-            self.logger.error("Lineage analysis failed", job_id=str(job_id), error=str(e))
+            job_logger.error(f"Lineage analysis failed: {str(e)}")
             self.job_manager.update_job_status(
                 job_id,
                 "FAILED",
@@ -148,6 +222,81 @@ class LineageService(LoggerMixin):
                 error_message=str(e),
             )
             raise
+    
+    def _process_views_with_logging(
+        self, 
+        sf_env: str, 
+        view_names: Optional[List[str]], 
+        engine, 
+        job_id: UUID, 
+        job_logger, 
+        total_views: int
+    ) -> List[List[str]]:
+        """Process views with detailed logging and progress tracking."""
+        from api.core.analysis import process_all_views
+        
+        job_logger.info("Starting view processing with detailed logging")
+        
+        # For now, use the existing process_all_views function
+        # In a future enhancement, we could modify this to provide per-view logging
+        try:
+            csv_rows = process_all_views(
+                sf_env=sf_env,
+                view_names=view_names,
+                engine=engine
+            )
+            
+            job_logger.info(f"View processing completed, generated {len(csv_rows)} result rows")
+            return csv_rows
+            
+        except Exception as e:
+            job_logger.error(f"View processing failed: {str(e)}")
+            raise
+    
+    async def process_lineage_analysis(
+        self,
+        job_id: UUID,
+        request: LineageAnalysisRequest,
+        user_id: str,
+    ) -> List[ColumnLineageResult]:
+        """
+        Process column lineage analysis using thread pool executor.
+        This method submits the heavy work to a background thread.
+        """
+        from api.v1.services.background_executor import background_executor
+        
+        self.logger.info("Submitting lineage analysis to thread pool", job_id=str(job_id))
+        
+        # Define completion callback
+        def on_completion(job_id_str: str, result: Any, error: Exception):
+            from api.v1.services.job_logger import JobLoggerManager
+            
+            if error:
+                self.logger.error(f"Background job failed", job_id=job_id_str, error=str(error))
+                self.job_manager.update_job_status(
+                    UUID(job_id_str),
+                    "FAILED",
+                    completed_at=datetime.utcnow(),
+                    error_message=str(error),
+                )
+            else:
+                self.logger.info(f"Background job completed successfully", job_id=job_id_str)
+            
+            # Note: Don't cleanup job logger immediately as logs might be accessed later
+            # JobLoggerManager.cleanup_logger(UUID(job_id_str))
+        
+        # Submit to thread pool
+        await background_executor.submit_job(
+            job_id,
+            self._blocking_lineage_analysis,
+            job_id,
+            request,
+            user_id,
+            completion_callback=on_completion
+        )
+        
+        # Return empty list since this is async - results will be stored by the background task
+        return []
     
     def _convert_csv_rows_to_api_results(self, csv_rows: List[List[str]]) -> List[ColumnLineageResult]:
         """Convert CSV rows from standalone analysis to API result format."""

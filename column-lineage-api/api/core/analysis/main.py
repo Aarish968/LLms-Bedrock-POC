@@ -30,7 +30,7 @@ class _EngineWrappedConnection:
             WHERE TABLE_CATALOG = CURRENT_DATABASE()
             AND TABLE_NAME NOT LIKE 'CANVAS_%'
             AND (TABLE_SCHEMA = 'CPS_DSCI_API' OR TABLE_SCHEMA = 'CPS_DSCI_BR')
-            ORDER BY TABLE_NAME 
+            ORDER BY TABLE_NAME limit 2
             """
             
             with self.engine.connect() as connection:

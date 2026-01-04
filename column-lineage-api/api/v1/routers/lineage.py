@@ -39,7 +39,7 @@ async def start_lineage_analysis(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user),
 ):
-    """Start column lineage analysis."""
+    """Start column lineage analysis using thread pool executor."""
     logger.info(
         "Starting lineage analysis",
         user_id=current_user.id,
@@ -59,10 +59,9 @@ async def start_lineage_analysis(
         # Store job immediately
         job_manager.create_job(job)
         
-        # Always use async processing to prevent frontend timeouts
-        logger.info("Adding background task", job_id=str(job.job_id))
-        background_tasks.add_task(
-            lineage_service.process_lineage_analysis,
+        # Submit to thread pool executor (non-blocking)
+        logger.info("Submitting job to thread pool executor", job_id=str(job.job_id))
+        await lineage_service.process_lineage_analysis(
             job.job_id,
             request,
             current_user.id,
@@ -72,7 +71,7 @@ async def start_lineage_analysis(
         return LineageAnalysisResponse(
             job_id=job.job_id,
             status=JobStatus.PENDING,
-            message="Analysis started. Use the job_id to check status and retrieve results.",
+            message="Analysis started in background. Use the job_id to check status and retrieve results.",
             results_url=f"/api/v1/lineage/results/{job.job_id}",
         )
             
@@ -402,7 +401,16 @@ async def cancel_job(
         )
     
     try:
+        # Try to cancel in thread pool executor first
+        from api.v1.services.background_executor import background_executor
+        cancelled_in_executor = background_executor.cancel_job(job_id)
+        
+        if cancelled_in_executor:
+            logger.info("Job cancelled in thread pool executor", job_id=str(job_id))
+        
+        # Update job status regardless
         job_manager.cancel_job(job_id)
+        
         return {"message": "Job cancelled successfully"}
         
     except Exception as e:
@@ -410,6 +418,60 @@ async def cancel_job(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to cancel job: {str(e)}",
+        )
+
+
+@router.post("/jobs/{job_id}/force-cancel")
+async def force_cancel_job(
+    job_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Force cancel a stuck job (admin operation)."""
+    logger.info("Force cancelling job", job_id=str(job_id), user_id=current_user.id)
+    
+    job = job_manager.get_job(job_id)
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    
+    try:
+        from api.v1.services.background_executor import background_executor
+        from api.v1.services.job_logger import JobLoggerManager
+        
+        # Force cancel in executor
+        cancelled_in_executor = background_executor.cancel_job(job_id)
+        
+        # Force update job status to CANCELLED
+        job_manager.update_job_status(
+            job_id,
+            "CANCELLED",
+            completed_at=datetime.utcnow(),
+            error_message="Job force-cancelled by user"
+        )
+        
+        # Log the force cancellation
+        try:
+            job_logger = JobLoggerManager.get_logger(job_id)
+            job_logger.warning("Job force-cancelled by user")
+            job_logger.log_job_completion("CANCELLED", 0, "Force-cancelled by user")
+        except Exception:
+            pass  # Don't fail if logging fails
+        
+        logger.info("Job force-cancelled successfully", job_id=str(job_id))
+        
+        return {
+            "message": "Job force-cancelled successfully",
+            "cancelled_in_executor": cancelled_in_executor,
+            "job_status": "CANCELLED"
+        }
+        
+    except Exception as e:
+        logger.error("Failed to force cancel job", job_id=str(job_id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to force cancel job: {str(e)}",
         )
 
 
@@ -442,6 +504,203 @@ async def list_jobs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve jobs: {str(e)}",
+        )
+
+
+@router.get("/jobs/{job_id}/logs")
+async def get_job_logs(
+    job_id: UUID,
+    lines: Optional[int] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get logs for a specific job."""
+    logger.info("Getting job logs", job_id=str(job_id), user_id=current_user.id)
+    
+    try:
+        from api.v1.services.job_logger import JobLoggerManager
+        
+        # Check if job exists
+        job = job_manager.get_job(job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Job not found",
+            )
+        
+        # Get job logger
+        job_logger = JobLoggerManager.get_logger(job_id)
+        log_content = job_logger.get_log_content(lines)
+        
+        return {
+            "job_id": str(job_id),
+            "log_file_path": job_logger.get_log_file_path(),
+            "log_content": log_content,
+            "lines_requested": lines,
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get job logs", job_id=str(job_id), error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get job logs: {str(e)}",
+        )
+
+
+@router.get("/system/job-logs")
+async def list_all_job_logs(
+    current_user: User = Depends(get_current_active_user),
+):
+    """List all available job log files."""
+    logger.info("Listing all job logs", user_id=current_user.id)
+    
+    try:
+        from api.v1.services.job_logger import JobLoggerManager
+        
+        job_logs = JobLoggerManager.list_job_logs()
+        
+        return {
+            "total_log_files": len(job_logs),
+            "job_logs": job_logs,
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list job logs", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list job logs: {str(e)}",
+        )
+
+
+@router.delete("/system/job-logs/cleanup")
+async def cleanup_old_job_logs(
+    max_age_days: int = 7,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Clean up old job log files."""
+    logger.info("Cleaning up old job logs", max_age_days=max_age_days, user_id=current_user.id)
+    
+    try:
+        from api.v1.services.job_logger import JobLoggerManager
+        
+        cleaned_count = JobLoggerManager.cleanup_old_logs(max_age_days)
+        
+        return {
+            "message": f"Cleaned up {cleaned_count} old log files",
+            "cleaned_count": cleaned_count,
+            "max_age_days": max_age_days,
+        }
+        
+    except Exception as e:
+        logger.error("Failed to cleanup job logs", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup job logs: {str(e)}",
+        )
+
+
+@router.get("/system/logging-info")
+async def get_logging_info(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get logging system information."""
+    logger.info("Getting logging system info", user_id=current_user.id)
+    
+    try:
+        from api.core.log_config import get_log_summary
+        
+        log_summary = get_log_summary()
+        
+        return {
+            "logging_system": "enhanced_job_logging",
+            "server_logs": "Console + Optional File",
+            "job_logs": "Individual files per job",
+            **log_summary
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get logging info", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get logging info: {str(e)}",
+        )
+
+
+@router.post("/system/cleanup-stuck-jobs")
+async def cleanup_stuck_jobs(
+    max_age_minutes: int = 60,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Clean up jobs that have been running for too long (admin operation)."""
+    logger.info("Cleaning up stuck jobs", max_age_minutes=max_age_minutes, user_id=current_user.id)
+    
+    try:
+        from datetime import timedelta
+        
+        # Get all jobs
+        all_jobs = job_manager.list_jobs(limit=1000)
+        
+        cutoff_time = datetime.utcnow() - timedelta(minutes=max_age_minutes)
+        stuck_jobs = []
+        
+        for job in all_jobs:
+            # Check if job is stuck (RUNNING/PENDING for too long)
+            if job.status in ["RUNNING", "PENDING"]:
+                job_age = datetime.utcnow() - job.created_at
+                if job_age > timedelta(minutes=max_age_minutes):
+                    stuck_jobs.append(job)
+        
+        # Cancel stuck jobs
+        cancelled_count = 0
+        for job in stuck_jobs:
+            try:
+                # Force cancel the job
+                job_manager.update_job_status(
+                    job.job_id,
+                    "CANCELLED",
+                    completed_at=datetime.utcnow(),
+                    error_message=f"Auto-cancelled: stuck for {max_age_minutes}+ minutes"
+                )
+                cancelled_count += 1
+                logger.info("Auto-cancelled stuck job", job_id=str(job.job_id))
+            except Exception as e:
+                logger.error("Failed to cancel stuck job", job_id=str(job.job_id), error=str(e))
+        
+        return {
+            "message": f"Cleaned up {cancelled_count} stuck jobs",
+            "cancelled_jobs": cancelled_count,
+            "max_age_minutes": max_age_minutes,
+            "stuck_job_ids": [str(job.job_id) for job in stuck_jobs]
+        }
+        
+    except Exception as e:
+        logger.error("Failed to cleanup stuck jobs", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup stuck jobs: {str(e)}",
+        )
+
+
+@router.get("/system/executor-status")
+async def get_executor_status(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get background executor status for monitoring."""
+    logger.info("Getting executor status", user_id=current_user.id)
+    
+    try:
+        from api.v1.services.background_executor import background_executor
+        
+        return {
+            "running_jobs_count": background_executor.get_running_jobs_count(),
+            "running_job_ids": background_executor.get_running_job_ids(),
+            "executor_active": True,
+        }
+        
+    except Exception as e:
+        logger.error("Failed to get executor status", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get executor status: {str(e)}",
         )
 
 

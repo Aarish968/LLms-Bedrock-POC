@@ -12,12 +12,13 @@ from fastapi.responses import JSONResponse
 
 from api.core.config import get_settings
 from api.core.logging import setup_logging
+from api.core.log_config import setup_enhanced_logging
 from api.dependencies.database import get_database_engine
 from api.health.healthcheck import router as health_router
 from api.v1.routers import lineage
 
-# Setup structured logging
-setup_logging()
+# Setup enhanced logging with job-specific capability
+setup_enhanced_logging()
 logger = structlog.get_logger(__name__)
 
 
@@ -37,7 +38,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.warning("Database connection failed, continuing in mock mode", error=str(e))
     
+    # Initialize background executor
+    try:
+        from api.v1.services.background_executor import background_executor
+        logger.info("Background executor initialized")
+    except Exception as e:
+        logger.error("Failed to initialize background executor", error=str(e))
+    
     yield
+    
+    # Shutdown background executor
+    try:
+        from api.v1.services.background_executor import background_executor
+        background_executor.shutdown(wait=False)  # Don't wait for jobs to complete on shutdown
+        logger.info("Background executor shutdown complete")
+    except Exception as e:
+        logger.error("Error during background executor shutdown", error=str(e))
     
     logger.info("Shutting down Column Lineage API")
 
